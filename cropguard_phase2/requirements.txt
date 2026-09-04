@@ -1,0 +1,10 @@
+# Expected to run inside nvcr.io/nvidia/nemo container. 
+# Only additional dependencies required for Dataset prep and basic metrics.
+python-dotenv
+pandas
+scikit-learn
+Pillow
+requests
+tqdm
+PyYAML
+imagehash

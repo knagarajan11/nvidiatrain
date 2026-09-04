@@ -1,0 +1,51 @@
+tomato:
+  early_blight:
+    aliases:
+      - "Tomato_Early_blight"
+      - "Tomato Early Blight"
+      - "early blight"
+  late_blight:
+    aliases:
+      - "Tomato_Late_blight"
+      - "Tomato Late Blight"
+  healthy:
+    aliases:
+      - "Tomato_healthy"
+      - "Tomato Healthy"
+      - "healthy"
+rice:
+  brown_spot:
+    aliases:
+      - "Brown Spot"
+      - "rice_brown_spot"
+      - "brownspot"
+  hispa:
+    aliases:
+      - "Hispa"
+      - "rice_hispa"
+  leaf_blast:
+    aliases:
+      - "Leaf Blast"
+      - "rice_leaf_blast"
+      - "leafblast"
+  healthy:
+    aliases:
+      - "Healthy"
+      - "rice_healthy"
+apple:
+  apple_scab:
+    aliases:
+      - "Apple_scab"
+      - "Apple Scab"
+  black_rot:
+    aliases:
+      - "Apple_Black_rot"
+      - "Apple Black Rot"
+  cedar_apple_rust:
+    aliases:
+      - "Apple_Cedar_apple_rust"
+      - "Apple Cedar Rust"
+  healthy:
+    aliases:
+      - "Apple_healthy"
+      - "Apple Healthy"

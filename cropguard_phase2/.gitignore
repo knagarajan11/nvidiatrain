@@ -1,0 +1,35 @@
+# Environments
+.env
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Phase 2 Specific Outputs
+cropguard_phase2/data/raw/*
+!cropguard_phase2/data/raw/.keep
+cropguard_phase2/data/metadata/*
+!cropguard_phase2/data/metadata/.keep
+cropguard_phase2/data/processed/*
+!cropguard_phase2/data/processed/.keep
+cropguard_phase2/data/train/*
+cropguard_phase2/data/validation/*
+cropguard_phase2/data/test/*
+!cropguard_phase2/data/train/.keep
+!cropguard_phase2/data/validation/.keep
+!cropguard_phase2/data/test/.keep
+
+cropguard_phase2/outputs/checkpoints/*
+!cropguard_phase2/outputs/checkpoints/.keep
+cropguard_phase2/outputs/adapters/*
+!cropguard_phase2/outputs/adapters/.keep
+cropguard_phase2/outputs/merged/*
+!cropguard_phase2/outputs/merged/.keep
+cropguard_phase2/outputs/predictions/*
+!cropguard_phase2/outputs/predictions/.keep
+cropguard_phase2/outputs/metrics/*
+!cropguard_phase2/outputs/metrics/.keep
+cropguard_phase2/outputs/reports/*
+!cropguard_phase2/outputs/reports/.keep
+
+cropguard_phase2/logs/*
+!cropguard_phase2/logs/.keep

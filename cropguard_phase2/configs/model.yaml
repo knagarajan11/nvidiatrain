@@ -1,0 +1,5 @@
+model_name: "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL"
+model_family: "nemotron"
+vision_encoder: "siglip"
+max_seq_length: 4096
+image_resolution: 336

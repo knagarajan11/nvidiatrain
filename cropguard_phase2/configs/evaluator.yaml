@@ -1,0 +1,15 @@
+evaluator:
+  framework: "nemo_evaluator"
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "macro_f1"
+    - "weighted_f1"
+  tasks:
+    - name: "crop_identification"
+      type: "classification"
+    - name: "crop_disease_identification"
+      type: "classification"
+    - name: "structured_diagnosis"
+      type: "generative_json"
