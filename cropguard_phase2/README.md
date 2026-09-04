@@ -83,7 +83,7 @@ python inference/predict_batch.py --input data/test --output outputs/predictions
 ## Troubleshooting
 
 *   **CUDA errors or GPU OOM**: Edit `configs/lora.yaml` and reduce `batch_size`. Verify `--nproc-per-node` matches your actual GPU count. Ensure your `nvcr.io` container version matches your DGX CUDA driver.
-*   **NCCL errors**: If using multi-node DGX setups, verify infiniband configurations. In Docker, ensure you run with `--ipc=host --ulimit memlock=-1 --ulimit stack=67108864`.
+*   **NCCL errors**: If using multi-node DGX setups, verify infiniband configurations. In Apptainer, ensure your system limits are appropriately set for InfiniBand.
 *   **Model download/authentication errors**: Verify `.env` tokens. Ensure you have accepted the model license terms on HuggingFace/NGC.
 *   **NeMo version conflicts**: Ensure you are using the official NVIDIA NeMo container. Do not blindly `pip install -U everything` as it breaks tightly coupled Megatron-Core versions.
 *   **Dataset errors**: Run `python datasets/validate_dataset.py` to identify missing or corrupt image paths.

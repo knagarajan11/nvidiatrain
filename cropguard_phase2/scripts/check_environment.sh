@@ -14,8 +14,8 @@ else
     exit 1
 fi
 
-# Check Docker / Container Environment
-if [ -f /.dockerenv ]; then
+# Check Apptainer / Container Environment
+if [ -f /.dockerenv ] || [ -d /.singularity.d ]; then
     echo "[INFO] Running inside a container."
 else
     echo "[WARN] Not running inside a container. It is highly recommended to use the official NVIDIA NeMo container."
