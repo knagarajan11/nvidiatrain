@@ -198,6 +198,26 @@ def _patch_transformers_compat():
     except ImportError:
         pass
 
+    # ── AutoFactory config class mismatch bypass (for dynamic module submodels) ──
+    try:
+        from transformers.models.auto.auto_factory import _BaseAutoModelClass
+        _orig_register = _BaseAutoModelClass.register
+
+        @classmethod
+        def _patched_register(cls, config_class, model_class, exist_ok=False):
+            if hasattr(model_class, "config_class") and model_class.config_class is not config_class:
+                if getattr(model_class.config_class, "__name__", "") == getattr(config_class, "__name__", ""):
+                    model_class.config_class = config_class
+            
+            if hasattr(_orig_register, "__func__"):
+                return _orig_register.__func__(cls, config_class, model_class, exist_ok=exist_ok)
+            return _orig_register(config_class, model_class, exist_ok=exist_ok)
+
+        _BaseAutoModelClass.register = _patched_register
+        logging.info("  patched: transformers AutoFactory.register (config mismatch bypass)")
+    except Exception:
+        pass
+
 
 def load_config(yaml_path):
     with open(yaml_path, 'r') as f:
