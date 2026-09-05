@@ -180,6 +180,24 @@ def _patch_transformers_compat():
         transformers.video_utils = _video_mod
         logging.info("  patched: transformers.video_utils (VideoInput)")
 
+    # ── transformers.image_processing_utils_fast patch (divide_to_patches) ──
+    # image_processing.py imports divide_to_patches which was added in 4.49+
+    try:
+        import transformers.image_processing_utils_fast as _ipf
+        if not hasattr(_ipf, "divide_to_patches"):
+            def divide_to_patches(image, patch_size: int):
+                # image is a torch.Tensor of shape (C, H, W)
+                patches = []
+                c, h, w = image.shape
+                for i in range(0, h, patch_size):
+                    for j in range(0, w, patch_size):
+                        patches.append(image[:, i:i+patch_size, j:j+patch_size])
+                return patches
+            _ipf.divide_to_patches = divide_to_patches
+            logging.info("  patched: transformers.image_processing_utils_fast.divide_to_patches")
+    except ImportError:
+        pass
+
 
 def load_config(yaml_path):
     with open(yaml_path, 'r') as f:
