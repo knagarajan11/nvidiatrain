@@ -68,6 +68,12 @@ def build_hydra_overrides(lora_cfg, model_cfg):
     target_modules = lora_cfg.get("target_modules", ["q_proj", "v_proj"])
     # Hydra list syntax: [a,b,c]
     target_modules_str = "[" + ",".join(target_modules) + "]"
+    # Vision encoder for Nemotron-Nano-12B-v2-VL is SigLIP (not CLIP).
+    # Derived from model.yaml: vision_encoder: "siglip"
+    vision_encoder_model = model_cfg.get(
+        "vision_encoder_hf_id",
+        "google/siglip-so400m-patch14-384"   # SigLIP SO400M, 384px — used by Nemotron VL
+    )
 
     overrides = [
         # --- trainer ---
@@ -89,10 +95,19 @@ def build_hydra_overrides(lora_cfg, model_cfg):
         #   when check_val_every_n_epoch=None, found 1.0
         f"++trainer.check_val_every_n_epoch=1",
         f"++trainer.val_check_interval=1.0",
-        # --- model ---
+        # --- model (base model restore) ---
+        # model.restore_from_path loads the full base .nemo model.
+        # model.peft.restore_from_path is for restoring a PEFT adapter checkpoint
+        # (i.e. resuming LoRA training), NOT for loading the base model.
+        f"++model.restore_from_path={model_name}.nemo",
         f"++model.micro_batch_size={lora_cfg.get('batch_size', 4)}",
+        # --- vision encoder ---
+        # The base neva_peft.yaml has vision_encoder.from_pretrained='' (empty),
+        # which causes: OSError: Incorrect path_or_model_id: ''
+        # Nemotron-Nano-12B-v2-VL uses SigLIP as its vision backbone.
+        f"++model.mm_cfg.vision_encoder.from_pretrained={vision_encoder_model}",
+        # --- PEFT / LoRA ---
         f"++model.peft.peft_scheme=lora",
-        f"++model.peft.restore_from_path={model_name}.nemo",
         f"++model.peft.lora_tuning.r={lora_cfg.get('r', 16)}",
         f"++model.peft.lora_tuning.alpha={lora_cfg.get('alpha', 32)}",
         f"++model.peft.lora_tuning.dropout={lora_cfg.get('dropout', 0.05)}",
