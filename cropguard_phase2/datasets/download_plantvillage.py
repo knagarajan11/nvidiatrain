@@ -34,7 +34,7 @@ def main():
     hf_token = os.getenv("HF_TOKEN")
 
     logging.info("Loading dataset from HuggingFace Hub (this may take several minutes)...")
-    dataset = load_dataset("mohanty/PlantVillage", "color", token=hf_token)
+    dataset = load_dataset("mohanty/PlantVillage", token=hf_token)
 
     # Get label names
     label_names = dataset["train"].features["label"].names
