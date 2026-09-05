@@ -9,8 +9,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def main():
     """
-    Downloads the PlantVillage dataset from HuggingFace (mohanty/PlantVillage).
-    Contains ~54,000 images across 38 classes of healthy and diseased plant leaves.
+    Downloads the PlantVillage dataset from HuggingFace.
+    Uses geraldmc/plantvillage-full (parquet format, 54,304 images, 38 classes).
+    Fallback: dpdl-benchmark/plant_village.
     """
     dest_dir = Path(os.getenv("PLANTVILLAGE_DIR", "data/raw/plantvillage"))
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -22,7 +23,6 @@ def main():
         return
 
     logging.info(f"Downloading PlantVillage dataset to {dest_dir}")
-    logging.info("Source: HuggingFace (mohanty/PlantVillage, config=color)")
 
     try:
         from datasets import load_dataset
@@ -30,29 +30,53 @@ def main():
         logging.error("'datasets' library not found. Install it: pip install datasets")
         sys.exit(1)
 
-    # Set HF token if available
     hf_token = os.getenv("HF_TOKEN")
 
-    logging.info("Loading dataset from HuggingFace Hub (this may take several minutes)...")
+    # Try multiple dataset sources in order of reliability
+    dataset_candidates = [
+        ("geraldmc/plantvillage-full", None),
+        ("dpdl-benchmark/plant_village", None),
+        ("BrandonFors/Plant-Diseases-PlantVillage-Dataset", None),
+    ]
 
-    # Clear any stale HuggingFace cache for this dataset to avoid builder config errors
-    import shutil
-    cache_dir = Path.home() / ".cache" / "huggingface" / "datasets" / "mohanty___plant_village"
-    if cache_dir.exists():
-        logging.info(f"Clearing stale HuggingFace cache at {cache_dir}...")
-        shutil.rmtree(cache_dir, ignore_errors=True)
+    dataset = None
+    for repo_id, config in dataset_candidates:
+        try:
+            logging.info(f"Trying HuggingFace dataset: {repo_id}...")
+            kwargs = {"token": hf_token, "trust_remote_code": True}
+            if config:
+                kwargs["name"] = config
+            dataset = load_dataset(repo_id, **kwargs)
+            logging.info(f"Successfully loaded: {repo_id}")
+            break
+        except Exception as e:
+            logging.warning(f"  Failed to load {repo_id}: {e}")
+            continue
 
-    dataset = load_dataset("mohanty/PlantVillage", name="default", trust_remote_code=True, token=hf_token)
+    if dataset is None:
+        logging.error("Could not download PlantVillage from any source.")
+        sys.exit(1)
 
-    # Auto-detect the label column and image column
+    # Auto-detect features
     first_split = list(dataset.keys())[0]
     features = dataset[first_split].features
+    logging.info(f"Dataset splits: {list(dataset.keys())}")
     logging.info(f"Dataset features: {list(features.keys())}")
+
+    # Find image column
+    image_key = None
+    for key in ["image", "img", "pixel_values"]:
+        if key in features:
+            image_key = key
+            break
+    if image_key is None:
+        logging.error(f"Could not find image column. Available: {list(features.keys())}")
+        sys.exit(1)
 
     # Find label column
     label_key = None
     label_names = None
-    for key in ["label", "labels", "class", "category", "disease"]:
+    for key in ["label", "labels", "class", "category", "disease", "class_name", "label_name"]:
         if key in features:
             label_key = key
             if hasattr(features[key], "names"):
@@ -60,10 +84,12 @@ def main():
             break
 
     if label_key is None:
-        logging.error(f"Could not find label column. Available features: {list(features.keys())}")
+        logging.error(f"Could not find label column. Available: {list(features.keys())}")
         sys.exit(1)
 
-    logging.info(f"Using label column: '{label_key}' with {len(label_names) if label_names else '?'} classes")
+    logging.info(f"Using image column: '{image_key}', label column: '{label_key}'")
+    if label_names:
+        logging.info(f"Number of classes: {len(label_names)}")
 
     total_saved = 0
     for split_name in dataset:
@@ -71,7 +97,7 @@ def main():
         logging.info(f"Processing split '{split_name}' with {len(split)} samples...")
 
         for i, sample in enumerate(split):
-            image = sample["image"]
+            image = sample[image_key]
             label_val = sample[label_key]
 
             # Resolve label name
@@ -90,14 +116,15 @@ def main():
             img_path = class_dir / img_filename
 
             if not img_path.exists():
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
                 image.save(img_path, "JPEG", quality=95)
 
             total_saved += 1
-            if total_saved % 1000 == 0:
+            if total_saved % 2000 == 0:
                 logging.info(f"  Saved {total_saved} images so far...")
 
     logging.info(f"Download complete. Total images saved: {total_saved}")
-    logging.info(f"Number of classes: {len(label_names)}")
 
     # Count images per class
     for class_dir in sorted(dest_dir.iterdir()):
