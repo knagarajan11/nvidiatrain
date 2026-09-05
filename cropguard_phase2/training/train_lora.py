@@ -205,23 +205,25 @@ def _patch_transformers_compat():
         for _auto_cls in (AutoModelForCausalLM, AutoModelForVision2Seq, AutoModel):
             _orig_register = _auto_cls.register
             
-            # Using a closure to capture the original register method correctly
             def _make_patched_register(orig_reg):
                 @classmethod
                 def _patched_register(cls, config_class, model_class, exist_ok=False):
-                    if hasattr(model_class, "config_class") and model_class.config_class is not config_class:
-                        if getattr(model_class.config_class, "__name__", "") == getattr(config_class, "__name__", ""):
-                            # Bypass the strict identity check by aligning the classes
-                            model_class.config_class = config_class
-                    
-                    if hasattr(orig_reg, "__func__"):
-                        return orig_reg.__func__(cls, config_class, model_class, exist_ok=exist_ok)
-                    return orig_reg(config_class, model_class, exist_ok=exist_ok)
+                    try:
+                        if hasattr(orig_reg, "__func__"):
+                            return orig_reg.__func__(cls, config_class, model_class, exist_ok=exist_ok)
+                        return orig_reg(config_class, model_class, exist_ok=exist_ok)
+                    except ValueError as e:
+                        if "config_class" in str(e):
+                            logging.info(f"  AutoFactory bypass: ignored config_class mismatch for {model_class.__name__}")
+                            # fallback: just register it manually
+                            cls._model_mapping.register(config_class, model_class, exist_ok=exist_ok)
+                        else:
+                            raise
                 return _patched_register
                 
             _auto_cls.register = _make_patched_register(_orig_register)
             
-        logging.info("  patched: transformers AutoFactory (config mismatch bypass)")
+        logging.info("  patched: transformers AutoFactory (config mismatch bypass via ValueError catch)")
     except Exception as e:
         logging.warning(f"  failed to patch AutoFactory: {e}")
 
