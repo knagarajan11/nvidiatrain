@@ -7,6 +7,15 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# First-word tokens that are genuine crop names in PlantVillage folder names.
+# When a folder lacks a '___' or '__' separator and the first word is NOT here,
+# the entire folder name is the disease (e.g. 'Bacterial_spot', 'Early_blight').
+KNOWN_CROPS = {
+    "tomato", "apple", "potato", "corn", "grape", "pepper",
+    "peach", "strawberry", "cherry", "blueberry", "raspberry",
+    "soybean", "soyabean", "squash", "orange", "rice",
+}
+
 def process_directory(raw_dir, source_name):
     metadata = []
     
@@ -15,11 +24,40 @@ def process_directory(raw_dir, source_name):
             continue
             
         class_name = class_dir.name
-        # Assuming PlantVillage format like "Tomato_Early_blight" or "Tomato__healthy"
-        parts = class_name.replace("__", "_").split("_")
-        crop = parts[0]
-        disease = "_".join(parts[1:]) if len(parts) > 1 else "Unknown"
-        health_status = "Healthy" if "healthy" in class_name.lower() else "Diseased"
+        if "___" in class_name:
+            parts = class_name.split("___", 1)
+            crop = parts[0]
+            disease = parts[1]
+        elif "__" in class_name:
+            parts = class_name.split("__", 1)
+            crop = parts[0]
+            disease = parts[1]
+        else:
+            parts = class_name.split("_")
+            first_word = parts[0].lower().rstrip("(")
+            if first_word in KNOWN_CROPS:
+                crop = parts[0]
+                disease = "_".join(parts[1:]) if len(parts) > 1 else "Unknown"
+            else:
+                # Entire folder name is the disease label (no crop prefix).
+                # normalize_labels.py will resolve crop via the reverse lookup.
+                crop = "Unknown"
+                disease = class_name
+            
+        # Clean crop name
+        crop = crop.split("(")[0].replace(",", "").strip(" _-").capitalize()
+        if crop.lower() in ["pepper", "pepper_bell", "pepper bell"]:
+            crop = "Pepper"
+        elif crop.lower() in ["soyabean", "soybean"]:
+            crop = "Soybean"
+            
+        # Clean disease name and determine health status
+        disease = disease.strip(" _-")
+        if disease.lower() in ["healthy", "leaf", ""] or "healthy" in class_name.lower():
+            health_status = "Healthy"
+            disease = "healthy"
+        else:
+            health_status = "Diseased"
         
         for img_path in class_dir.glob("*.*"):
             if img_path.suffix.lower() not in ['.jpg', '.jpeg', '.png']:
