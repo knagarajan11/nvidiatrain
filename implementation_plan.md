@@ -8,7 +8,7 @@ This plan outlines the creation of an independent, reproducible training and eva
 > 1. **Model ID:** The target model will be `nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL`. 
 > 2. **NeMo Evaluator:** The current CLI tool for NeMo Evaluator is `nel` (NeMo Evaluator Library/Launcher). The `evaluation/run_nemo_evaluator.py` script will wrap the `nel eval run` commands rather than fabricating a non-existent Python API.
 > 3. **Training Method:** We will utilize the official NeMo Framework's Parameter-Efficient Fine-Tuning (PEFT) capabilities (LoRA) specifically designed for VLMs, using `torchrun` and NeMo's VLM fine-tuning scripts.
-> 4. **Environment:** Instead of a complex custom Apptainer definition or blind `pip install`, I highly recommend utilizing the official NVIDIA NeMo container (e.g., `nvcr.io/nvidia/nemo:latest` or `24.07`) which comes pre-packaged with PyTorch, CUDA, NeMo, Megatron, and PEFT optimized for DGX.
+> 4. **Environment:** Instead of a complex custom Apptainer definition or blind `pip install`, I highly recommend utilizing the official NVIDIA NeMo container (e.g., `nvcr.io/nvidia/nemo:latest` or `24.09`) which comes pre-packaged with PyTorch, CUDA, NeMo, Megatron, and PEFT optimized for DGX.
 
 ## Open Questions
 > [!WARNING]

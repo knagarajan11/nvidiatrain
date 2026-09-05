@@ -14,7 +14,7 @@ We highly recommend running this pipeline within the official **NVIDIA NeMo Cont
 
 Using Apptainer (recommended for HPC/DGX nodes where `sudo` is unavailable):
 ```bash
-apptainer run --nv --bind $(pwd):/workspace --pwd /workspace docker://nvcr.io/nvidia/nemo:24.07 bash
+apptainer run --nv --bind $(pwd):/workspace --pwd /workspace docker://nvcr.io/nvidia/nemo:24.09 bash
 ```
 
 Inside the container, install the basic pip dependencies for data preparation:
