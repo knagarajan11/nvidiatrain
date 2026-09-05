@@ -200,23 +200,30 @@ def _patch_transformers_compat():
 
     # ── AutoFactory config class mismatch bypass (for dynamic module submodels) ──
     try:
-        from transformers.models.auto.auto_factory import _BaseAutoModelClass
-        _orig_register = _BaseAutoModelClass.register
-
-        @classmethod
-        def _patched_register(cls, config_class, model_class, exist_ok=False):
-            if hasattr(model_class, "config_class") and model_class.config_class is not config_class:
-                if getattr(model_class.config_class, "__name__", "") == getattr(config_class, "__name__", ""):
-                    model_class.config_class = config_class
+        from transformers import AutoModelForCausalLM, AutoModelForVision2Seq, AutoModel
+        
+        for _auto_cls in (AutoModelForCausalLM, AutoModelForVision2Seq, AutoModel):
+            _orig_register = _auto_cls.register
             
-            if hasattr(_orig_register, "__func__"):
-                return _orig_register.__func__(cls, config_class, model_class, exist_ok=exist_ok)
-            return _orig_register(config_class, model_class, exist_ok=exist_ok)
-
-        _BaseAutoModelClass.register = _patched_register
-        logging.info("  patched: transformers AutoFactory.register (config mismatch bypass)")
-    except Exception:
-        pass
+            # Using a closure to capture the original register method correctly
+            def _make_patched_register(orig_reg):
+                @classmethod
+                def _patched_register(cls, config_class, model_class, exist_ok=False):
+                    if hasattr(model_class, "config_class") and model_class.config_class is not config_class:
+                        if getattr(model_class.config_class, "__name__", "") == getattr(config_class, "__name__", ""):
+                            # Bypass the strict identity check by aligning the classes
+                            model_class.config_class = config_class
+                    
+                    if hasattr(orig_reg, "__func__"):
+                        return orig_reg.__func__(cls, config_class, model_class, exist_ok=exist_ok)
+                    return orig_reg(config_class, model_class, exist_ok=exist_ok)
+                return _patched_register
+                
+            _auto_cls.register = _make_patched_register(_orig_register)
+            
+        logging.info("  patched: transformers AutoFactory (config mismatch bypass)")
+    except Exception as e:
+        logging.warning(f"  failed to patch AutoFactory: {e}")
 
 
 def load_config(yaml_path):
