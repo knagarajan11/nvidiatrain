@@ -74,14 +74,14 @@ def main():
     # Find label column
     label_key = None
     label_names = None
-    for key in ["label", "labels", "class", "category", "disease", "class_name", "label_name"]:
+    for key in ["class_label", "class_name", "label_name", "label", "labels", "category", "class", "disease"]:
         if key in features:
             label_key = key
             if hasattr(features[key], "names"):
                 label_names = features[key].names
             break
 
-    if label_key is None:
+    if label_key is None and not ("host" in features and ("disease" in features or "is_healthy" in features)):
         logging.error(f"Could not find label column. Available: {list(features.keys())}")
         sys.exit(1)
 
@@ -96,16 +96,27 @@ def main():
 
         for i, sample in enumerate(split):
             image = sample[image_key]
-            label_val = sample[label_key]
 
-            # Resolve label name
-            if label_names is not None and isinstance(label_val, int):
-                label_name = label_names[label_val]
+            # Resolve class directory name preserving both crop and disease
+            if "host" in sample and sample["host"] and ("disease" in sample or "is_healthy" in sample):
+                host_str = str(sample["host"]).strip().replace(" ", "_")
+                if sample.get("is_healthy"):
+                    dis_str = "healthy"
+                else:
+                    dis_str = str(sample.get("disease", "unknown")).strip().replace(" ", "_")
+                class_dir_name = f"{host_str}___{dis_str}".replace("/", "_").replace("\\", "_")
+            elif "class_label" in sample and sample["class_label"]:
+                class_dir_name = str(sample["class_label"]).replace(" ", "_").replace("/", "_").replace("\\", "_")
+            elif label_key is not None:
+                label_val = sample[label_key]
+                if label_names is not None and isinstance(label_val, int):
+                    label_name = label_names[label_val]
+                else:
+                    label_name = str(label_val)
+                class_dir_name = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
             else:
-                label_name = str(label_val)
+                class_dir_name = "unknown"
 
-            # Create class directory
-            class_dir_name = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
             class_dir = dest_dir / class_dir_name
             class_dir.mkdir(parents=True, exist_ok=True)
 

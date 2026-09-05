@@ -15,10 +15,43 @@ def process_directory(raw_dir, source_name):
             continue
             
         class_name = class_dir.name
-        parts = class_name.split("_")
-        crop = parts[0] if parts else "Unknown"
-        disease = "_".join(parts[1:]) if len(parts) > 1 else "Unknown"
-        health_status = "Healthy" if "healthy" in class_name.lower() else "Diseased"
+        if "___" in class_name:
+            parts = class_name.split("___", 1)
+            crop = parts[0]
+            disease = parts[1]
+        elif "__" in class_name:
+            parts = class_name.split("__", 1)
+            crop = parts[0]
+            disease = parts[1]
+        else:
+            # Fallback heuristic for directory names that start with a crop
+            known_crops = ["Tomato", "Apple", "Potato", "Corn", "Grape", "Peach", "Pepper", "Bell_pepper", "Strawberry", "Cherry", "Blueberry", "Raspberry", "Soybean", "Soyabean", "Squash", "Rice"]
+            matched = False
+            for kc in known_crops:
+                if class_name.lower().startswith(kc.lower()):
+                    crop = kc
+                    disease = class_name[len(kc):].strip(" _-")
+                    matched = True
+                    break
+            if not matched:
+                parts = class_name.split("_")
+                crop = parts[0] if parts else "Unknown"
+                disease = "_".join(parts[1:]) if len(parts) > 1 else "Unknown"
+
+        # Normalize special crop names
+        if crop.lower() in ["bell_pepper", "bell pepper", "pepper"]:
+            crop = "Pepper"
+        elif crop.lower() in ["soyabean", "soybean"]:
+            crop = "Soybean"
+        else:
+            crop = crop.capitalize()
+
+        disease = disease.strip(" _-")
+        if disease.lower() in ["healthy", "leaf", ""] or "healthy" in class_name.lower() or "healthy" in disease.lower():
+            health_status = "Healthy"
+            disease = "healthy"
+        else:
+            health_status = "Diseased"
         
         for img_path in class_dir.glob("*.*"):
             if img_path.suffix.lower() not in ['.jpg', '.jpeg', '.png']:

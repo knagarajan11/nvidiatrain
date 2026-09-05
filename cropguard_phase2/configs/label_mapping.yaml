@@ -4,48 +4,283 @@ tomato:
       - "Tomato_Early_blight"
       - "Tomato Early Blight"
       - "early blight"
+      - "early_blight"
+      - "early"
+      - "Tomato Early blight leaf"
   late_blight:
     aliases:
       - "Tomato_Late_blight"
       - "Tomato Late Blight"
+      - "late blight"
+      - "late_blight"
+      - "late"
+      - "Tomato leaf late blight"
+  bacterial_spot:
+    aliases:
+      - "Tomato_Bacterial_spot"
+      - "Bacterial_spot"
+      - "bacterial spot"
+      - "bacterial"
+      - "Tomato leaf bacterial spot"
+  leaf_mold:
+    aliases:
+      - "Tomato_Leaf_Mold"
+      - "Leaf_Mold"
+      - "leaf mold"
+      - "mold"
+      - "Tomato mold leaf"
+  septoria_leaf_spot:
+    aliases:
+      - "Tomato_Septoria_leaf_spot"
+      - "Septoria_leaf_spot"
+      - "septoria leaf spot"
+      - "septoria"
+      - "Tomato Septoria leaf spot"
+  spider_mites:
+    aliases:
+      - "Tomato_Spider_mites_Two-spotted_spider_mite"
+      - "Spider_mites"
+      - "spider mites"
+      - "two-spotted spider mite"
+      - "Tomato two spotted spider mites leaf"
+      - "two spotted spider mites leaf"
+  target_spot:
+    aliases:
+      - "Tomato_Target_Spot"
+      - "Target_Spot"
+      - "target spot"
+  yellow_leaf_curl_virus:
+    aliases:
+      - "Tomato_Yellow_Leaf_Curl_Virus"
+      - "Yellow_Leaf_Curl_Virus"
+      - "yellow leaf curl virus"
+      - "Tomato leaf yellow virus"
+  mosaic_virus:
+    aliases:
+      - "Tomato_mosaic_virus"
+      - "mosaic virus"
+      - "mosaic_virus"
+      - "Tomato leaf mosaic virus"
   healthy:
     aliases:
       - "Tomato_healthy"
       - "Tomato Healthy"
       - "healthy"
+      - "Tomato leaf"
+
+apple:
+  apple_scab:
+    aliases:
+      - "Apple_scab"
+      - "Apple Scab"
+      - "apple_scab"
+      - "scab"
+      - "Apple Scab Leaf"
+  black_rot:
+    aliases:
+      - "Apple_Black_rot"
+      - "Apple Black Rot"
+      - "black rot"
+      - "black_rot"
+  cedar_apple_rust:
+    aliases:
+      - "Apple_Cedar_apple_rust"
+      - "Apple Cedar Rust"
+      - "cedar apple rust"
+      - "rust"
+      - "Apple rust leaf"
+  healthy:
+    aliases:
+      - "Apple_healthy"
+      - "Apple Healthy"
+      - "healthy"
+      - "Apple leaf"
+
 rice:
   brown_spot:
     aliases:
       - "Brown Spot"
       - "rice_brown_spot"
       - "brownspot"
+      - "brown_spot"
   hispa:
     aliases:
       - "Hispa"
       - "rice_hispa"
+      - "hispa"
   leaf_blast:
     aliases:
       - "Leaf Blast"
       - "rice_leaf_blast"
       - "leafblast"
+      - "blast"
+      - "leaf_blast"
+  neck_blast:
+    aliases:
+      - "Neck Blast"
+      - "neck_blast"
+  bacterial_leaf_blight:
+    aliases:
+      - "Bacterial leaf blight"
+      - "bacterial_leaf_blight"
+      - "bacterial_blight"
   healthy:
     aliases:
       - "Healthy"
       - "rice_healthy"
-apple:
-  apple_scab:
+      - "healthy"
+
+potato:
+  early_blight:
     aliases:
-      - "Apple_scab"
-      - "Apple Scab"
-  black_rot:
+      - "Potato_Early_blight"
+      - "Early_blight"
+      - "early blight"
+      - "early_blight"
+      - "Potato leaf early blight"
+  late_blight:
     aliases:
-      - "Apple_Black_rot"
-      - "Apple Black Rot"
-  cedar_apple_rust:
-    aliases:
-      - "Apple_Cedar_apple_rust"
-      - "Apple Cedar Rust"
+      - "Potato_Late_blight"
+      - "Late_blight"
+      - "late blight"
+      - "late_blight"
+      - "Potato leaf late blight"
   healthy:
     aliases:
-      - "Apple_healthy"
-      - "Apple Healthy"
+      - "Potato_healthy"
+      - "healthy"
+      - "Potato leaf"
+
+corn:
+  cercospora_leaf_spot:
+    aliases:
+      - "Cercospora_leaf_spot_Gray_leaf_spot"
+      - "cercospora"
+      - "gray leaf spot"
+      - "Corn Gray leaf spot"
+  common_rust:
+    aliases:
+      - "Common_rust_"
+      - "Common_rust"
+      - "common rust"
+      - "Common rust"
+      - "rust"
+      - "Corn rust leaf"
+  northern_leaf_blight:
+    aliases:
+      - "Northern_Leaf_Blight"
+      - "northern leaf blight"
+      - "Corn leaf blight"
+      - "leaf blight"
+  healthy:
+    aliases:
+      - "Corn_healthy"
+      - "healthy"
+
+grape:
+  black_rot:
+    aliases:
+      - "Grape_Black_rot"
+      - "Black_rot"
+      - "black rot"
+      - "Grape leaf black rot"
+  esca:
+    aliases:
+      - "Esca_(Black_Measles)"
+      - "esca"
+      - "black measles"
+  leaf_blight:
+    aliases:
+      - "Leaf_blight_(Isariopsis_Leaf_Spot)"
+      - "leaf blight"
+      - "leaf_blight"
+  healthy:
+    aliases:
+      - "Grape_healthy"
+      - "healthy"
+      - "Grape leaf"
+
+pepper:
+  bacterial_spot:
+    aliases:
+      - "Pepper,_bell_Bacterial_spot"
+      - "Bacterial_spot"
+      - "bacterial spot"
+      - "Bell_pepper leaf spot"
+  healthy:
+    aliases:
+      - "Pepper,_bell_healthy"
+      - "healthy"
+      - "Bell_pepper leaf"
+
+peach:
+  bacterial_spot:
+    aliases:
+      - "Peach_Bacterial_spot"
+      - "Bacterial_spot"
+      - "bacterial spot"
+  healthy:
+    aliases:
+      - "Peach_healthy"
+      - "healthy"
+      - "Peach leaf"
+
+strawberry:
+  leaf_scorch:
+    aliases:
+      - "Strawberry_Leaf_scorch"
+      - "Leaf_scorch"
+      - "leaf scorch"
+  healthy:
+    aliases:
+      - "Strawberry_healthy"
+      - "healthy"
+      - "Strawberry leaf"
+
+cherry:
+  powdery_mildew:
+    aliases:
+      - "Cherry_(including_sour)_Powdery_mildew"
+      - "Powdery_mildew"
+      - "powdery mildew"
+  healthy:
+    aliases:
+      - "Cherry_(including_sour)_healthy"
+      - "healthy"
+      - "Cherry leaf"
+
+squash:
+  powdery_mildew:
+    aliases:
+      - "Squash_Powdery_mildew"
+      - "Powdery_mildew"
+      - "powdery mildew"
+      - "Squash Powdery mildew leaf"
+
+orange:
+  citrus_greening:
+    aliases:
+      - "Orange_Haunglongbing_(Citrus_greening)"
+      - "Haunglongbing"
+      - "citrus greening"
+
+blueberry:
+  healthy:
+    aliases:
+      - "Blueberry_healthy"
+      - "healthy"
+      - "Blueberry leaf"
+
+raspberry:
+  healthy:
+    aliases:
+      - "Raspberry_healthy"
+      - "healthy"
+      - "Raspberry leaf"
+
+soybean:
+  healthy:
+    aliases:
+      - "Soybean_healthy"
+      - "healthy"
+      - "Soyabean leaf"
