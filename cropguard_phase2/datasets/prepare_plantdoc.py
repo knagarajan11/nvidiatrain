@@ -35,8 +35,14 @@ def process_directory(raw_dir, source_name):
                     break
             if not matched:
                 parts = class_name.split("_")
-                crop = parts[0] if parts else "Unknown"
-                disease = "_".join(parts[1:]) if len(parts) > 1 else "Unknown"
+                first_word = parts[0].lower()
+                known_crops_lower = [kc.lower() for kc in known_crops]
+                if first_word in known_crops_lower:
+                    crop = parts[0]
+                    disease = "_".join(parts[1:]) if len(parts) > 1 else "Unknown"
+                else:
+                    crop = "Unknown"
+                    disease = class_name
 
         # Normalize special crop names
         if crop.lower() in ["bell_pepper", "bell pepper", "pepper"]:

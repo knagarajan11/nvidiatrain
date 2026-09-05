@@ -65,17 +65,16 @@ def normalize_label(crop, disease, mapping, reverse_lookup=None):
 
     # 3. Global reverse lookup fallback.
     # Handles disease-only folder names where a disease word (e.g. 'Bacterial',
-    # 'Haunglongbing') was mistakenly parsed as the crop.
-    # Strategy: try 'crop_disease' combined first, then disease alone.
+    # 'Mold', 'Rust', 'Scab', 'Haunglongbing') was mistakenly parsed as the crop.
     if reverse_lookup:
         combined = f"{crop_lower}_{disease_clean}".strip("_")
-        for candidate in [combined, disease_clean]:
-            if candidate in reverse_lookup:
+        for candidate in [combined, disease_clean, crop_lower]:
+            if candidate and candidate != "unknown" and candidate in reverse_lookup:
                 found_crop, found_disease = reverse_lookup[candidate]
                 return found_crop.capitalize(), found_disease
-        # Substring match on combined string
+        # Substring match on combined string or individual tokens
         for alias, (found_crop, found_disease) in reverse_lookup.items():
-            if len(alias) > 5 and alias in combined:
+            if len(alias) >= 4 and (alias in combined or alias in disease_clean or alias in crop_lower):
                 return found_crop.capitalize(), found_disease
             if len(combined) > 5 and combined in alias:
                 return found_crop.capitalize(), found_disease
