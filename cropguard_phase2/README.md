@@ -12,9 +12,16 @@ nvidia-smi
 ## B. Environment Setup
 We highly recommend running this pipeline within the official **NVIDIA NeMo Container** to avoid dependency nightmares with CUDA, PyTorch, NCCL, and Megatron.
 
-Using Apptainer (recommended for HPC/DGX nodes where `sudo` is unavailable):
+Using Apptainer (recommended for HPC/DGX nodes where `sudo` is unavailable). To avoid long load times if `squashfuse` is missing from your host, we build a permanent sandbox first:
+
+**Step 1: Build the sandbox (Only needs to be done once)**
 ```bash
-apptainer run --nv --bind $(pwd):/workspace --pwd /workspace docker://nvcr.io/nvidia/nemo:24.09 bash
+apptainer build --sandbox nemo_sandbox docker://nvcr.io/nvidia/nemo:24.09
+```
+
+**Step 2: Run the container from the sandbox (Instant loading)**
+```bash
+apptainer run --nv --bind $(pwd):/workspace --pwd /workspace nemo_sandbox bash
 ```
 
 Inside the container, install the basic pip dependencies for data preparation:

@@ -8,3 +8,5 @@ requests
 tqdm
 PyYAML
 imagehash
+datasets
+kagglehub
