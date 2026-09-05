@@ -5,20 +5,25 @@ import subprocess
 import yaml
 import logging
 from pathlib import Path
+from typing import Optional
 import torch
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 def load_config(yaml_path):
     with open(yaml_path, 'r') as f:
         return yaml.safe_load(f)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NeMo path helpers (only used when a local .nemo file exists)
+# ─────────────────────────────────────────────────────────────────────────────
+
 def find_neva_conf_dir(nemo_script):
     """
-    Return the conf/ directory that ships alongside neva_peft.py, which contains
-    neva_peft.py's own Hydra/OmegaConf schema.  We use this as the base config
-    so that all required model keys are present — we then override only our
-    specific settings via CLI '++key=value' overrides.
+    Return the conf/ directory that ships alongside neva_peft.py so that NeMo's
+    full OmegaConf struct schema is used as the Hydra base config.
     """
     script_dir = Path(nemo_script).parent
     for candidate in [script_dir / "conf", script_dir.parent / "conf"]:
@@ -30,82 +35,56 @@ def find_neva_conf_dir(nemo_script):
 def pick_config_name(conf_dir):
     """
     Choose the best Hydra config file from conf_dir.
-    Priority:
-      1. Any file whose stem contains 'peft' (e.g. neva_peft, neva_peft_config)
-      2. Any file whose stem contains 'neva' but NOT 'mixtral' / 'llama' / 'mistral'
-      3. First file alphabetically (last resort)
+    Priority: files with 'peft' > generic 'neva' (not mixtral/llama) > first file.
     """
     conf_files = sorted(Path(conf_dir).glob("*.yaml"))
     if not conf_files:
         return "neva_peft"
-    # Priority 1 – contains 'peft'
     for f in conf_files:
         if "peft" in f.stem.lower():
             return f.stem
-    # Priority 2 – generic neva, not a specific model variant
     skip_keywords = {"mixtral", "llama", "mistral", "falcon", "mamba"}
     for f in conf_files:
         stem_lower = f.stem.lower()
         if "neva" in stem_lower and not any(kw in stem_lower for kw in skip_keywords):
             return f.stem
-    # Fallback
     return conf_files[0].stem
 
-def build_hydra_overrides(lora_cfg, model_cfg):
-    """
-    Build the list of Hydra '++key=value' CLI overrides that inject our
-    CropGuard settings into neva_peft.py's existing OmegaConf struct.
 
-    We use '++' (double-plus) throughout:
-      '++'  = override if the key already exists in the struct, OR
-              append if it doesn't exist yet.
-    This is safer than '+' (append-only, fails if key exists) or plain
-    'key=value' (override-only, fails if key is not in struct).
+def build_hydra_overrides(lora_cfg, model_cfg, nemo_path: str):
+    """
+    Build Hydra '++key=value' CLI overrides to inject CropGuard settings into
+    neva_peft.py's OmegaConf struct.  Only called when a local .nemo file exists.
+
+    '++' = override if key exists, append if it doesn't — safe for both cases.
     See: https://hydra.cc/docs/advanced/override_grammar/basic/#force-add
+
+    NOTE: Do NOT include trainer.strategy — MegatronLMPPTrainerBuilder builds its
+    own MegatronStrategy and passes it explicitly to Trainer(), so having it in
+    cfg.trainer too raises: TypeError: multiple values for keyword argument 'strategy'
     """
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
-    model_name = model_cfg.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL")
     target_modules = lora_cfg.get("target_modules", ["q_proj", "v_proj"])
-    # Hydra list syntax: [a,b,c]
     target_modules_str = "[" + ",".join(target_modules) + "]"
-    # Vision encoder for Nemotron-Nano-12B-v2-VL is SigLIP (not CLIP).
-    # Derived from model.yaml: vision_encoder: "siglip"
-    vision_encoder_model = model_cfg.get(
+    vision_encoder_hf = model_cfg.get(
         "vision_encoder_hf_id",
-        "google/siglip-so400m-patch14-384"   # SigLIP SO400M, 384px — used by Nemotron VL
+        "google/siglip-so400m-patch14-384"  # SigLIP used by Nemotron-Nano VL
     )
 
-    overrides = [
+    return [
         # --- trainer ---
-        # NOTE: Do NOT set trainer.strategy here.
-        # MegatronLMPPTrainerBuilder builds its own MegatronStrategy object and
-        # passes it as strategy=... to Trainer() explicitly. If trainer.strategy
-        # is also present in cfg.trainer, Trainer() receives it twice and raises:
-        #   TypeError: got multiple values for keyword argument 'strategy'
         f"++trainer.num_nodes=1",
         f"++trainer.devices={num_gpus}",
         f"++trainer.accelerator=gpu",
         f"++trainer.precision=bf16",
         f"++trainer.max_epochs={lora_cfg.get('epochs', 3)}",
-        # check_val_every_n_epoch=1 enables epoch-based validation.
-        # When it is null (base config default), val_check_interval must be an
-        # integer (step count). With epoch-mode=1, val_check_interval=1.0 is
-        # valid (means 100% of epoch). Without this, PL raises:
-        #   MisconfigurationException: val_check_interval should be an integer
-        #   when check_val_every_n_epoch=None, found 1.0
+        # epoch-based validation so val_check_interval=1.0 (float) is valid
         f"++trainer.check_val_every_n_epoch=1",
         f"++trainer.val_check_interval=1.0",
-        # --- model (base model restore) ---
-        # model.restore_from_path loads the full base .nemo model.
-        # model.peft.restore_from_path is for restoring a PEFT adapter checkpoint
-        # (i.e. resuming LoRA training), NOT for loading the base model.
-        f"++model.restore_from_path={model_name}.nemo",
+        # --- model ---
+        f"++model.restore_from_path={nemo_path}",
         f"++model.micro_batch_size={lora_cfg.get('batch_size', 4)}",
-        # --- vision encoder ---
-        # The base neva_peft.yaml has vision_encoder.from_pretrained='' (empty),
-        # which causes: OSError: Incorrect path_or_model_id: ''
-        # Nemotron-Nano-12B-v2-VL uses SigLIP as its vision backbone.
-        f"++model.mm_cfg.vision_encoder.from_pretrained={vision_encoder_model}",
+        f"++model.mm_cfg.vision_encoder.from_pretrained={vision_encoder_hf}",
         # --- PEFT / LoRA ---
         f"++model.peft.peft_scheme=lora",
         f"++model.peft.lora_tuning.r={lora_cfg.get('r', 16)}",
@@ -121,7 +100,7 @@ def build_hydra_overrides(lora_cfg, model_cfg):
         "++exp_manager.name=cropguard_lora",
         "++exp_manager.create_checkpoint_callback=true",
     ]
-    return overrides
+
 
 def find_nemo_script():
     candidates = [
@@ -134,7 +113,6 @@ def find_nemo_script():
     for c in candidates:
         if c.exists():
             return str(c)
-            
     nemo_base = Path("/opt/NeMo/examples")
     if nemo_base.exists():
         for p in nemo_base.rglob("*.py"):
@@ -142,108 +120,324 @@ def find_nemo_script():
                 return str(p)
     return None
 
-def run_native_peft_training(lora_cfg, model_cfg):
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Native HuggingFace PEFT training (used for HF-only models like Nemotron VL)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MultimodalInstructionDataset(torch.utils.data.Dataset):
     """
-    Direct PyTorch / Transformers / PEFT fine-tuning runner when NeMo example scripts are not found.
+    Reads a JSONL file where each line is a multimodal instruction sample:
+      {"image": "<path>", "conversations": [{"from": "human", "value": "..."}, ...]}
+    Tokenises text and returns pixel_values + input_ids for vision-language training.
     """
-    logging.info("Initializing HuggingFace PEFT / PyTorch LoRA fine-tuning runner...")
+
+    def __init__(self, jsonl_path: str, processor, max_length: int = 512):
+        self.samples = []
+        with open(jsonl_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    self.samples.append(json.loads(line))
+        self.processor = processor
+        self.max_length = max_length
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        sample = self.samples[idx]
+        # Build text from conversation turns
+        convs = sample.get("conversations", [])
+        text_parts = []
+        for turn in convs:
+            role = turn.get("from", "")
+            value = turn.get("value", "")
+            if role == "human":
+                text_parts.append(f"User: {value}")
+            elif role in ("gpt", "assistant"):
+                text_parts.append(f"Assistant: {value}")
+        text = "\n".join(text_parts)
+
+        # Load image if present
+        image_path = sample.get("image", None)
+        image = None
+        if image_path:
+            try:
+                from PIL import Image
+                img_p = Path(image_path)
+                if not img_p.is_absolute():
+                    img_p = Path("data") / img_p
+                if img_p.exists():
+                    image = Image.open(img_p).convert("RGB")
+            except Exception:
+                pass  # fall back to text-only if image load fails
+
+        try:
+            if image is not None:
+                enc = self.processor(
+                    text=text, images=image,
+                    return_tensors="pt", truncation=True, max_length=self.max_length,
+                    padding="max_length"
+                )
+            else:
+                enc = self.processor(
+                    text=text,
+                    return_tensors="pt", truncation=True, max_length=self.max_length,
+                    padding="max_length"
+                )
+        except Exception:
+            enc = self.processor(
+                text=text,
+                return_tensors="pt", truncation=True, max_length=self.max_length,
+                padding="max_length"
+            )
+
+        # Squeeze batch dim added by processor
+        item = {k: v.squeeze(0) for k, v in enc.items()}
+        # Labels = input_ids (causal LM); mask padding tokens with -100
+        labels = item["input_ids"].clone()
+        pad_id = self.processor.tokenizer.pad_token_id
+        if pad_id is not None:
+            labels[labels == pad_id] = -100
+        item["labels"] = labels
+        return item
+
+
+def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
+    """
+    HuggingFace PEFT / LoRA fine-tuning for Nemotron-Nano-12B-v2-VL.
+
+    Used when the model is a HuggingFace model (no local .nemo file).
+    Loads the model via AutoModel, wraps it with LoRA via PEFT, then trains
+    with HuggingFace Trainer on the multimodal JSONL instruction dataset.
+    """
+    logging.info("═" * 60)
+    logging.info("CropGuard: HuggingFace PEFT / LoRA training path")
+    logging.info("═" * 60)
+
     output_dir = Path("outputs/checkpoints/cropguard_lora")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_jsonl = Path("data/train/instruction_train.jsonl")
+    val_jsonl   = Path("data/validation/instruction_val.jsonl")
     if not train_jsonl.exists():
         logging.error(f"Training data not found at {train_jsonl}. Run prepare_all_datasets.sh first.")
         return
 
-    model_id = model_cfg.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL")
-    logging.info(f"Base model: {model_id}")
-    logging.info(f"LoRA config: r={lora_cfg.get('r', 16)}, alpha={lora_cfg.get('alpha', 32)}, epochs={lora_cfg.get('epochs', 3)}")
+    model_id    = model_cfg.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL")
+    lora_r      = lora_cfg.get("r", 16)
+    lora_alpha  = lora_cfg.get("alpha", 32)
+    lora_drop   = lora_cfg.get("dropout", 0.05)
+    target_mods = lora_cfg.get("target_modules", ["q_proj", "k_proj", "v_proj", "o_proj"])
+    epochs      = lora_cfg.get("epochs", 3)
+    batch_size  = lora_cfg.get("batch_size", 2)
+    max_length  = model_cfg.get("max_seq_length", 512)
 
+    logging.info(f"Model      : {model_id}")
+    logging.info(f"LoRA       : r={lora_r}, alpha={lora_alpha}, dropout={lora_drop}")
+    logging.info(f"Targets    : {target_mods}")
+    logging.info(f"Epochs     : {epochs}, batch={batch_size}")
+
+    # ── imports ──────────────────────────────────────────────────────────────
     try:
         from peft import LoraConfig, get_peft_model, TaskType
-        from transformers import AutoProcessor, AutoModelForVision2Seq, TrainingArguments, Trainer
+        from transformers import (
+            AutoProcessor, AutoModelForVision2Seq,
+            TrainingArguments, Trainer, BitsAndBytesConfig
+        )
     except ImportError:
-        logging.warning("PEFT or transformers not fully installed for native runner. Attempting to install...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "peft", "transformers", "accelerate"], check=False)
+        logging.info("Installing peft / transformers / accelerate …")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q",
+             "peft", "transformers", "accelerate", "bitsandbytes"],
+            check=False
+        )
         from peft import LoraConfig, get_peft_model, TaskType
-        from transformers import AutoProcessor, AutoModelForVision2Seq, TrainingArguments, Trainer
+        from transformers import (
+            AutoProcessor, AutoModelForVision2Seq,
+            TrainingArguments, Trainer, BitsAndBytesConfig
+        )
 
-    logging.info("LoRA configuration loaded successfully.")
-    logging.info(f"Target modules: {lora_cfg.get('target_modules', ['q_proj', 'v_proj'])}")
-    
-    # Save training status and metadata
-    metadata = {
-        "model_id": model_id,
-        "lora_r": lora_cfg.get("r", 16),
-        "lora_alpha": lora_cfg.get("alpha", 32),
-        "epochs": lora_cfg.get("epochs", 3),
-        "status": "ready",
-        "output_dir": str(output_dir)
-    }
-    with open(output_dir / "adapter_config.json", "w") as f:
-        json.dump(metadata, f, indent=2)
-    logging.info(f"Checkpoint directory prepared at {output_dir}")
+    # ── load processor ───────────────────────────────────────────────────────
+    logging.info(f"Loading processor from {model_id} …")
+    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+    if processor.tokenizer.pad_token is None:
+        processor.tokenizer.pad_token = processor.tokenizer.eos_token
+
+    # ── load model in 4-bit or bf16 ─────────────────────────────────────────
+    num_gpus = torch.cuda.device_count()
+    logging.info(f"Loading model on {num_gpus} GPU(s) …")
+
+    load_kwargs = dict(
+        pretrained_model_name_or_path=model_id,
+        trust_remote_code=True,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+    )
+    # Use 4-bit quant if only 1 GPU to save VRAM; multi-GPU uses bf16 directly
+    if num_gpus == 1:
+        try:
+            bnb_cfg = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+            )
+            load_kwargs["quantization_config"] = bnb_cfg
+            load_kwargs.pop("torch_dtype", None)
+            logging.info("Using 4-bit QLoRA (single GPU — conserving VRAM)")
+        except Exception:
+            logging.info("BitsAndBytes 4-bit not available, using bf16")
+
+    model = AutoModelForVision2Seq.from_pretrained(**load_kwargs)
+    model.config.use_cache = False  # required for gradient checkpointing
+
+    # ── apply LoRA ───────────────────────────────────────────────────────────
+    lora_config = LoraConfig(
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_drop,
+        target_modules=target_mods,
+        bias="none",
+        task_type=TaskType.CAUSAL_LM,
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+
+    # ── datasets ─────────────────────────────────────────────────────────────
+    logging.info("Building datasets …")
+    train_dataset = MultimodalInstructionDataset(str(train_jsonl), processor, max_length)
+    eval_dataset  = (
+        MultimodalInstructionDataset(str(val_jsonl), processor, max_length)
+        if val_jsonl.exists() else None
+    )
+    logging.info(f"Train samples : {len(train_dataset)}")
+    if eval_dataset:
+        logging.info(f"Val samples   : {len(eval_dataset)}")
+
+    # ── training arguments ───────────────────────────────────────────────────
+    training_args = TrainingArguments(
+        output_dir=str(output_dir),
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=max(1, batch_size // 2),
+        gradient_accumulation_steps=max(1, 8 // batch_size),
+        learning_rate=2e-4,
+        lr_scheduler_type="cosine",
+        warmup_ratio=0.05,
+        bf16=True,
+        fp16=False,
+        logging_steps=10,
+        save_strategy="epoch",
+        evaluation_strategy="epoch" if eval_dataset else "no",
+        load_best_model_at_end=bool(eval_dataset),
+        metric_for_best_model="eval_loss" if eval_dataset else None,
+        gradient_checkpointing=True,
+        dataloader_num_workers=2,
+        report_to=["tensorboard"],
+        logging_dir=str(output_dir / "tensorboard"),
+        remove_unused_columns=False,
+    )
+
+    # ── trainer ──────────────────────────────────────────────────────────────
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+    )
+
+    logging.info("Starting LoRA fine-tuning …")
+    trainer.train()
+
+    # ── save adapter ─────────────────────────────────────────────────────────
+    logging.info(f"Saving LoRA adapter to {output_dir} …")
+    model.save_pretrained(str(output_dir))
+    processor.save_pretrained(str(output_dir))
+    logging.info("✓ Training complete. Adapter saved.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     if not torch.cuda.is_available():
         logging.error("CUDA is not available. GPU is required for training.")
         return
-        
-    lora_cfg = load_config("configs/lora.yaml").get("lora", {})
+
+    lora_cfg  = load_config("configs/lora.yaml").get("lora", {})
     model_cfg = load_config("configs/model.yaml")
-    
+
     if not lora_cfg.get("enabled", True):
         logging.info("LoRA training is disabled in config.")
         return
-        
-    nemo_script = find_nemo_script()
-    num_gpus = torch.cuda.device_count()
-    
-    if nemo_script:
-        # Use neva_peft.py's OWN conf/ directory as the Hydra config base.
-        # This ensures all required OmegaConf struct keys (e.g. model.gradient_as_bucket_view)
-        # are present from NeMo's schema.  We then inject our CropGuard settings
-        # via '+key=value' CLI overrides ('+' appends without triggering struct errors).
-        # Generating our own full replacement YAML always breaks because NeMo's
-        # Python code accesses dozens of schema fields we can't predict.
-        conf_dir = find_neva_conf_dir(nemo_script)
-        overrides = build_hydra_overrides(lora_cfg, model_cfg)
 
-        if conf_dir:
-            config_name = pick_config_name(conf_dir)
-            logging.info(f"Using NeMo conf dir: {conf_dir}, config: {config_name}")
-            cmd = [
-                "torchrun",
-                f"--nproc-per-node={num_gpus}",
-                nemo_script,
-                f"--config-path={conf_dir}",
-                f"--config-name={config_name}",
-            ] + overrides
-        else:
-            # Fallback: no conf/ found — generate a minimal YAML as before,
-            # but log a warning so the user knows schema errors may occur.
-            logging.warning(
-                "Could not locate neva_peft conf/ directory. "
-                "Falling back to generated YAML — OmegaConf struct errors may occur."
-            )
-            cfg_path = Path("configs/nemo_lora_generated.yaml")
-            cfg_path.parent.mkdir(parents=True, exist_ok=True)
-            import yaml as _yaml
-            with open(cfg_path, "w") as f:
-                _yaml.dump({}, f)  # empty base; all settings via overrides
-            cmd = [
-                "torchrun",
-                f"--nproc-per-node={num_gpus}",
-                nemo_script,
-                f"--config-path={cfg_path.parent.absolute()}",
-                f"--config-name={cfg_path.name}",
-            ] + overrides
+    model_name = model_cfg.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL")
 
-        logging.info(f"Executing NeMo PEFT script: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True)
+    # ── routing decision ─────────────────────────────────────────────────────
+    # neva_peft.py requires a local .nemo file via model.restore_from_path.
+    # Nemotron-Nano-12B-v2-VL is a HuggingFace model — no .nemo file exists.
+    # Attempting to use neva_peft.py with a HF repo ID as the path fails with:
+    #   OSError: Incorrect path_or_model_id: 'nvidia/...'
+    # So we check for a local .nemo file first; if absent, go native HF PEFT.
+    nemo_candidates = [
+        Path(f"{model_name}.nemo"),
+        Path(f"models/{Path(model_name).name}.nemo"),
+        Path(f"/workspace/models/{Path(model_name).name}.nemo"),
+    ]
+    local_nemo = next((p for p in nemo_candidates if p.exists()), None)
+
+    if local_nemo:
+        logging.info(f"Found local .nemo file: {local_nemo} — using NeMo neva_peft path.")
+        _run_nemo_peft(lora_cfg, model_cfg, str(local_nemo))
     else:
-        logging.info("No external NeMo example script path found. Running native PEFT training runner...")
+        logging.info(
+            f"No local .nemo file found for '{model_name}'. "
+            "Using HuggingFace PEFT path (downloads model from Hub if needed)."
+        )
         run_native_peft_training(lora_cfg, model_cfg)
+
+
+def _run_nemo_peft(lora_cfg: dict, model_cfg: dict, nemo_path: str):
+    """Launch neva_peft.py via torchrun using NeMo's own conf/ schema."""
+    nemo_script = find_nemo_script()
+    num_gpus    = torch.cuda.device_count()
+
+    if not nemo_script:
+        logging.warning("No NeMo PEFT script found. Falling back to native HF PEFT.")
+        run_native_peft_training(lora_cfg, model_cfg)
+        return
+
+    conf_dir  = find_neva_conf_dir(nemo_script)
+    overrides = build_hydra_overrides(lora_cfg, model_cfg, nemo_path)
+
+    if conf_dir:
+        config_name = pick_config_name(conf_dir)
+        logging.info(f"NeMo conf dir: {conf_dir}, config: {config_name}")
+        cmd = [
+            "torchrun", f"--nproc-per-node={num_gpus}",
+            nemo_script,
+            f"--config-path={conf_dir}",
+            f"--config-name={config_name}",
+        ] + overrides
+    else:
+        logging.warning("NeMo conf/ dir not found. OmegaConf struct errors may occur.")
+        cfg_path = Path("configs/nemo_lora_generated.yaml")
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cfg_path, "w") as f:
+            yaml.dump({}, f)
+        cmd = [
+            "torchrun", f"--nproc-per-node={num_gpus}",
+            nemo_script,
+            f"--config-path={cfg_path.parent.absolute()}",
+            f"--config-name={cfg_path.name}",
+        ] + overrides
+
+    logging.info(f"Executing: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+
 
 if __name__ == "__main__":
     main()
