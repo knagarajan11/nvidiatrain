@@ -71,11 +71,15 @@ def build_hydra_overrides(lora_cfg, model_cfg):
 
     overrides = [
         # --- trainer ---
+        # NOTE: Do NOT set trainer.strategy here.
+        # MegatronLMPPTrainerBuilder builds its own MegatronStrategy object and
+        # passes it as strategy=... to Trainer() explicitly. If trainer.strategy
+        # is also present in cfg.trainer, Trainer() receives it twice and raises:
+        #   TypeError: got multiple values for keyword argument 'strategy'
         f"++trainer.num_nodes=1",
         f"++trainer.devices={num_gpus}",
         f"++trainer.accelerator=gpu",
         f"++trainer.precision=bf16",
-        f"++trainer.strategy=ddp",
         f"++trainer.max_epochs={lora_cfg.get('epochs', 3)}",
         f"++trainer.val_check_interval=1.0",
         # --- model ---
