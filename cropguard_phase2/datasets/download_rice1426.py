@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -14,13 +15,19 @@ def main():
     Fallback: Project-AgML/rice_disease_classification_bangladesh,
               LeafNet75/Rice-Disease-Classification-Dataset.
     """
+    parser = argparse.ArgumentParser(description="Download Rice dataset")
+    parser.add_argument("--force", "-f", action="store_true", help="Force re-download even if files already exist")
+    args = parser.parse_args()
+
     dest_dir = Path(os.getenv("RICE1426_DIR", "data/raw/rice1426"))
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    force_download = args.force or os.getenv("FORCE_DOWNLOAD", "").lower() in ("1", "true", "yes")
+
     # Check if already downloaded
     existing_images = list(dest_dir.rglob("*.jpg")) + list(dest_dir.rglob("*.jpeg")) + list(dest_dir.rglob("*.png"))
-    if len(existing_images) > 100:
-        logging.info(f"Rice dataset already downloaded ({len(existing_images)} images found in {dest_dir}). Skipping.")
+    if len(existing_images) > 100 and not force_download:
+        logging.info(f"Rice dataset already downloaded ({len(existing_images)} images found in {dest_dir}). Skipping. (Use --force to re-download)")
         return
 
     logging.info(f"Downloading Rice disease dataset to {dest_dir}")

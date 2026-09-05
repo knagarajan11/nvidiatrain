@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -13,13 +14,19 @@ def main():
     Uses geraldmc/plantvillage-full (parquet format, 54,304 images, 38 classes).
     Fallback: dpdl-benchmark/plant_village.
     """
+    parser = argparse.ArgumentParser(description="Download PlantVillage dataset")
+    parser.add_argument("--force", "-f", action="store_true", help="Force re-download even if files already exist")
+    args = parser.parse_args()
+
     dest_dir = Path(os.getenv("PLANTVILLAGE_DIR", "data/raw/plantvillage"))
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    force_download = args.force or os.getenv("FORCE_DOWNLOAD", "").lower() in ("1", "true", "yes")
+
     # Check if already downloaded
     existing_images = list(dest_dir.rglob("*.jpg")) + list(dest_dir.rglob("*.jpeg")) + list(dest_dir.rglob("*.png"))
-    if len(existing_images) > 100:
-        logging.info(f"PlantVillage already downloaded ({len(existing_images)} images found in {dest_dir}). Skipping.")
+    if len(existing_images) > 100 and not force_download:
+        logging.info(f"PlantVillage already downloaded ({len(existing_images)} images found in {dest_dir}). Skipping. (Use --force to re-download)")
         return
 
     logging.info(f"Downloading PlantVillage dataset to {dest_dir}")

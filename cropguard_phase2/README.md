@@ -41,8 +41,13 @@ cp .env.example .env
 Downloads PlantVillage, PlantDoc, and Rice1426.
 ```bash
 ./scripts/run_pipeline.sh --stage download
-# or
+# or:
 ./scripts/download_all_datasets.sh
+
+# To force re-download even if datasets already exist:
+./scripts/run_pipeline.sh --stage download --force
+# or:
+./scripts/download_all_datasets.sh --force
 ```
 
 ## E. Prepare Datasets

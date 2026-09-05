@@ -9,6 +9,7 @@ RUN_DATA=true
 RUN_TRAIN=true
 RUN_EVALUATE=true
 RUN_INFERENCE=true
+FORCE_DOWNLOAD_ARG=""
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -30,6 +31,10 @@ while [[ "$#" -gt 0 ]]; do
             esac
             shift 2
             ;;
+        --force|-f)
+            FORCE_DOWNLOAD_ARG="--force"
+            shift 1
+            ;;
         *)
             echo "Unknown option: $1"
             exit 1
@@ -44,7 +49,7 @@ echo "Starting CropGuard Phase 2 Pipeline..."
 
 # 2. Download
 if [ "$RUN_DOWNLOAD" = true ]; then
-    ./scripts/download_all_datasets.sh
+    ./scripts/download_all_datasets.sh $FORCE_DOWNLOAD_ARG
 fi
 
 # 3. Data Prep

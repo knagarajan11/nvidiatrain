@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -13,13 +14,19 @@ def main():
     Uses geraldmc/plantdoc-full (parquet format, ~2,569 images, 28 classes).
     Fallback: Project-AgML/plant_doc_classification.
     """
+    parser = argparse.ArgumentParser(description="Download PlantDoc dataset")
+    parser.add_argument("--force", "-f", action="store_true", help="Force re-download even if files already exist")
+    args = parser.parse_args()
+
     dest_dir = Path(os.getenv("PLANTDOC_DIR", "data/raw/plantdoc"))
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    force_download = args.force or os.getenv("FORCE_DOWNLOAD", "").lower() in ("1", "true", "yes")
+
     # Check if already downloaded
     existing_images = list(dest_dir.rglob("*.jpg")) + list(dest_dir.rglob("*.jpeg")) + list(dest_dir.rglob("*.png"))
-    if len(existing_images) > 100:
-        logging.info(f"PlantDoc already downloaded ({len(existing_images)} images found in {dest_dir}). Skipping.")
+    if len(existing_images) > 100 and not force_download:
+        logging.info(f"PlantDoc already downloaded ({len(existing_images)} images found in {dest_dir}). Skipping. (Use --force to re-download)")
         return
 
     logging.info(f"Downloading PlantDoc dataset to {dest_dir}")
