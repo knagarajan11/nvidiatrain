@@ -21,7 +21,8 @@ def generate_nemo_config(lora_cfg, model_cfg, out_path):
             "accelerator": "gpu",
             "max_epochs": lora_cfg.get("epochs", 3),
             "val_check_interval": 1.0,
-            "precision": "bf16",
+            # Note: 'precision' must NOT be in the YAML for neva_peft.py —
+            # OmegaConf struct mode rejects unknown keys. Pass as CLI override.
         },
         "model": {
             "micro_batch_size": lora_cfg.get("batch_size", 4),
@@ -134,12 +135,17 @@ def main():
     num_gpus = torch.cuda.device_count()
     
     if nemo_script:
+        # Pass precision and strategy as Hydra CLI overrides — neva_peft.py
+        # uses OmegaConf struct mode, so unknown YAML keys cause ConfigAttributeError.
+        # The correct pattern (per NVIDIA NeMo docs) is to override via CLI args.
         cmd = [
             "torchrun",
             f"--nproc-per-node={num_gpus}",
             nemo_script,
             f"--config-path={cfg_path.parent.absolute()}",
-            f"--config-name={cfg_path.name}"
+            f"--config-name={cfg_path.name}",
+            "trainer.precision=bf16",
+            "trainer.strategy=ddp",
         ]
         logging.info(f"Executing NeMo PEFT script: {' '.join(cmd)}")
         subprocess.run(cmd, check=True)
