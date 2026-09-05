@@ -12,18 +12,30 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 def load_env_file(env_path: str = ".env") -> dict:
-    """Parse a .env file and return key→value dict (does not set os.environ)."""
-    env = {}
-    try:
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, _, v = line.partition("=")
-                    env[k.strip()] = v.strip().strip('"').strip("'")
-    except FileNotFoundError:
-        pass
-    return env
+    """
+    Parse a .env file and return key→value dict.
+    Searches in priority order:
+      1. The explicit env_path (relative to CWD)
+      2. Same directory as this script file
+      3. Parent directory of this script (project root)
+    """
+    search_paths = [
+        Path(env_path),                              # CWD-relative (e.g. ./env)
+        Path(__file__).parent / env_path,            # script dir
+        Path(__file__).parent.parent / env_path,     # project root
+    ]
+    for p in search_paths:
+        if p.exists():
+            logging.info(f"Loading env from: {p.resolve()}")
+            env = {}
+            with open(p) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, _, v = line.partition("=")
+                        env[k.strip()] = v.strip().strip('"').strip("'")
+            return env
+    return {}
 
 
 def get_hf_token() -> Optional[str]:
