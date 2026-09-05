@@ -136,16 +136,17 @@ def main():
     
     if nemo_script:
         # Pass precision and strategy as Hydra CLI overrides — neva_peft.py
-        # uses OmegaConf struct mode, so unknown YAML keys cause ConfigAttributeError.
-        # The correct pattern (per NVIDIA NeMo docs) is to override via CLI args.
+        # uses OmegaConf struct mode, so keys not in the schema must use the
+        # '+' prefix to append them (plain override raises "Key not in struct").
+        # See: https://hydra.cc/docs/advanced/override_grammar/basic/#appending-to-config
         cmd = [
             "torchrun",
             f"--nproc-per-node={num_gpus}",
             nemo_script,
             f"--config-path={cfg_path.parent.absolute()}",
             f"--config-name={cfg_path.name}",
-            "trainer.precision=bf16",
-            "trainer.strategy=ddp",
+            "+trainer.precision=bf16",
+            "+trainer.strategy=ddp",
         ]
         logging.info(f"Executing NeMo PEFT script: {' '.join(cmd)}")
         subprocess.run(cmd, check=True)
