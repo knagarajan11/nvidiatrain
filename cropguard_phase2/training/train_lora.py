@@ -11,6 +11,49 @@ import torch
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+def load_env_file(env_path: str = ".env") -> dict:
+    """Parse a .env file and return key→value dict (does not set os.environ)."""
+    env = {}
+    try:
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    env[k.strip()] = v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return env
+
+
+def get_hf_token() -> Optional[str]:
+    """
+    Resolve HuggingFace token in priority order:
+      1. HF_TOKEN env var (already set in shell)
+      2. HUGGING_FACE_HUB_TOKEN env var
+      3. .env file in the current working directory
+      4. None (unauthenticated — will fail for gated models)
+    """
+    token = (
+        os.environ.get("HF_TOKEN")
+        or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    )
+    if not token:
+        env_vars = load_env_file(".env")
+        token = env_vars.get("HF_TOKEN") or env_vars.get("HUGGING_FACE_HUB_TOKEN")
+    if token:
+        # Also export to env so child processes (torchrun) inherit it
+        os.environ["HF_TOKEN"] = token
+        os.environ["HUGGING_FACE_HUB_TOKEN"] = token
+        logging.info("HF_TOKEN loaded successfully.")
+    else:
+        logging.warning(
+            "HF_TOKEN not found. Gated models (e.g. Nemotron-Nano-12B-v2-VL) "
+            "require authentication. Set HF_TOKEN in your .env file or shell."
+        )
+    return token or None
+
+
 def load_config(yaml_path):
     with open(yaml_path, 'r') as f:
         return yaml.safe_load(f)
@@ -259,9 +302,23 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
             TrainingArguments, Trainer, BitsAndBytesConfig
         )
 
+    # ── authenticate with HuggingFace Hub ───────────────────────────────────
+    # Nemotron-Nano-12B-v2-VL is a gated model — HF_TOKEN is required.
+    # Token is loaded from .env or the environment.
+    hf_token = get_hf_token()
+    if hf_token:
+        try:
+            from huggingface_hub import login
+            login(token=hf_token, add_to_git_credential=False)
+        except Exception:
+            pass  # login() may not be available in old hub versions; token passed directly
+
     # ── load processor ───────────────────────────────────────────────────────
     logging.info(f"Loading processor from {model_id} …")
-    processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(
+        model_id, trust_remote_code=True,
+        token=hf_token
+    )
     if processor.tokenizer.pad_token is None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
 
@@ -274,6 +331,7 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
         device_map="auto",
+        token=hf_token,
     )
     # Use 4-bit quant if only 1 GPU to save VRAM; multi-GPU uses bf16 directly
     if num_gpus == 1:
