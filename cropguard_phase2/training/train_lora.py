@@ -506,11 +506,15 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
     num_gpus = torch.cuda.device_count()
     logging.info(f"Loading model on {num_gpus} GPU(s) …")
 
+    # Determine correct device mapping based on torchrun environment
+    local_rank = int(os.environ.get("LOCAL_RANK", -1))
+    device_map = {"": local_rank} if local_rank != -1 else {"": 0}
+
     load_kwargs = dict(
         pretrained_model_name_or_path=model_id,
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
+        device_map=device_map,
         token=hf_token,
     )
     # Use 4-bit quant if only 1 GPU to save VRAM; multi-GPU uses bf16 directly
