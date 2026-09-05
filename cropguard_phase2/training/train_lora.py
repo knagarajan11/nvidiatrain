@@ -294,6 +294,29 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
     logging.info(f"Targets    : {target_mods}")
     logging.info(f"Epochs     : {epochs}, batch={batch_size}")
 
+    # ── ensure transformers >= 4.48 ──────────────────────────────────────────
+    # nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16's processing.py imports
+    # 'MultiModalData' from transformers.processing_utils, added in 4.48.0.
+    # The NeMo container (nemo:24.09) ships with an older version.
+    _MIN_TRANSFORMERS = (4, 48, 0)
+    try:
+        import transformers as _tf
+        _cur = tuple(int(x) for x in _tf.__version__.split(".")[:3])
+        if _cur < _MIN_TRANSFORMERS:
+            logging.info(
+                f"transformers {_tf.__version__} < 4.48.0 — upgrading "
+                "(required for Nemotron VL MultiModalData) ..."
+            )
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q",
+                 "transformers>=4.48.0", "--upgrade"],
+                check=True
+            )
+        else:
+            logging.info(f"transformers {_tf.__version__} is OK (>= 4.48.0)")
+    except Exception as e:
+        logging.warning(f"Could not verify/upgrade transformers: {e}")
+
     # ── imports ──────────────────────────────────────────────────────────────
     try:
         from peft import LoraConfig, get_peft_model, TaskType
@@ -302,10 +325,10 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
             TrainingArguments, Trainer, BitsAndBytesConfig
         )
     except ImportError:
-        logging.info("Installing peft / transformers / accelerate …")
+        logging.info("Installing peft / transformers / accelerate ...")
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "-q",
-             "peft", "transformers", "accelerate", "bitsandbytes"],
+             "peft", "transformers>=4.48.0", "accelerate", "bitsandbytes"],
             check=False
         )
         from peft import LoraConfig, get_peft_model, TaskType
