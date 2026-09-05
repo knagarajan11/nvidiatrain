@@ -66,6 +66,52 @@ def get_hf_token() -> Optional[str]:
     return token or None
 
 
+
+def _patch_transformers_compat():
+    """
+    Inject compatibility stubs into transformers.processing_utils for symbols
+    added in transformers 4.48+ that are absent in the NeMo container's 4.46.x.
+
+    The Nemotron VL model's dynamic processing.py does:
+      from transformers.processing_utils import (
+          ImagesKwargs, MultiModalData, ProcessingKwargs,
+          ProcessorMixin, Unpack, VideosKwargs
+      )
+    This patch adds stub TypedDicts so that import succeeds without any
+    network access or pip upgrade.
+    """
+    import transformers.processing_utils as _pu
+    import transformers
+
+    ver = transformers.__version__
+    logging.info(f"transformers version in container: {ver}")
+
+    try:
+        from typing import TypedDict
+    except ImportError:
+        from typing_extensions import TypedDict
+
+    # Unpack: in typing since 3.11, else typing_extensions
+    if not hasattr(_pu, "Unpack"):
+        try:
+            from typing import Unpack as _Unpack
+        except ImportError:
+            try:
+                from typing_extensions import Unpack as _Unpack
+            except ImportError:
+                from typing import Any as _Unpack  # last resort stub
+        _pu.Unpack = _Unpack
+        logging.info("  patched: Unpack")
+
+    # Stub TypedDicts for the remaining missing symbols
+    _stubs = ["ImagesKwargs", "VideosKwargs", "ProcessingKwargs", "MultiModalData"]
+    for _name in _stubs:
+        if not hasattr(_pu, _name):
+            _cls = type(_name, (dict,), {"__class_getitem__": classmethod(lambda cls, x: cls)})
+            setattr(_pu, _name, _cls)
+            logging.info(f"  patched: {_name}")
+
+
 def load_config(yaml_path):
     with open(yaml_path, 'r') as f:
         return yaml.safe_load(f)
@@ -294,28 +340,14 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
     logging.info(f"Targets    : {target_mods}")
     logging.info(f"Epochs     : {epochs}, batch={batch_size}")
 
-    # ── ensure transformers >= 4.48 ──────────────────────────────────────────
-    # nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16's processing.py imports
-    # 'MultiModalData' from transformers.processing_utils, added in 4.48.0.
-    # The NeMo container (nemo:24.09) ships with an older version.
-    _MIN_TRANSFORMERS = (4, 48, 0)
-    try:
-        import transformers as _tf
-        _cur = tuple(int(x) for x in _tf.__version__.split(".")[:3])
-        if _cur < _MIN_TRANSFORMERS:
-            logging.info(
-                f"transformers {_tf.__version__} < 4.48.0 — upgrading "
-                "(required for Nemotron VL MultiModalData) ..."
-            )
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-q",
-                 "transformers>=4.48.0", "--upgrade"],
-                check=True
-            )
-        else:
-            logging.info(f"transformers {_tf.__version__} is OK (>= 4.48.0)")
-    except Exception as e:
-        logging.warning(f"Could not verify/upgrade transformers: {e}")
+    # ── compatibility patch for older transformers in NeMo container ─────────
+    # The NeMo container ships with transformers 4.46.x, but
+    # nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16's processing.py requires
+    # symbols added in transformers 4.48+ (MultiModalData, etc.).
+    # The DGX has no outbound PyPI access so we cannot upgrade via pip.
+    # Instead we inject stub objects directly into transformers.processing_utils
+    # so the model's dynamic processing.py module can import successfully.
+    _patch_transformers_compat()
 
     # ── imports ──────────────────────────────────────────────────────────────
     try:
@@ -325,17 +357,8 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
             TrainingArguments, Trainer, BitsAndBytesConfig
         )
     except ImportError:
-        logging.info("Installing peft / transformers / accelerate ...")
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q",
-             "peft", "transformers>=4.48.0", "accelerate", "bitsandbytes"],
-            check=False
-        )
-        from peft import LoraConfig, get_peft_model, TaskType
-        from transformers import (
-            AutoProcessor, AutoModelForVision2Seq,
-            TrainingArguments, Trainer, BitsAndBytesConfig
-        )
+        logging.warning("peft/transformers not fully available; check container deps.")
+        raise
 
     # ── authenticate with HuggingFace Hub ───────────────────────────────────
     # Nemotron-Nano-12B-v2-VL is a gated model — HF_TOKEN is required.
