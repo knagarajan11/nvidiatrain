@@ -9,8 +9,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def main():
     """
-    Downloads the PlantDoc dataset from HuggingFace (agyaatcoder/PlantDoc).
-    Contains ~2,598 images across 27 classes of real-world plant disease photos.
+    Downloads the PlantDoc dataset from HuggingFace.
+    Uses geraldmc/plantdoc-full (parquet format, ~2,569 images, 28 classes).
+    Fallback: Project-AgML/plant_doc_classification.
     """
     dest_dir = Path(os.getenv("PLANTDOC_DIR", "data/raw/plantdoc"))
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -22,7 +23,6 @@ def main():
         return
 
     logging.info(f"Downloading PlantDoc dataset to {dest_dir}")
-    logging.info("Source: HuggingFace (agyaatcoder/PlantDoc)")
 
     try:
         from datasets import load_dataset
@@ -32,17 +32,49 @@ def main():
 
     hf_token = os.getenv("HF_TOKEN")
 
-    logging.info("Loading dataset from HuggingFace Hub (this may take a few minutes)...")
-    dataset = load_dataset("agyaatcoder/PlantDoc", token=hf_token)
+    # Try multiple dataset sources in order of reliability
+    dataset_candidates = [
+        "geraldmc/plantdoc-full",
+        "Project-AgML/plant_doc_classification",
+        "LamTNguyen/PlantDoc",
+        "agyaatcoder/PlantDoc",
+    ]
 
-    # Detect label feature
+    dataset = None
+    for repo_id in dataset_candidates:
+        try:
+            logging.info(f"Trying HuggingFace dataset: {repo_id}...")
+            dataset = load_dataset(repo_id, trust_remote_code=True, token=hf_token)
+            logging.info(f"Successfully loaded: {repo_id}")
+            break
+        except Exception as e:
+            logging.warning(f"  Failed to load {repo_id}: {e}")
+            continue
+
+    if dataset is None:
+        logging.error("Could not download PlantDoc from any source.")
+        sys.exit(1)
+
+    # Auto-detect features
     first_split = list(dataset.keys())[0]
     features = dataset[first_split].features
+    logging.info(f"Dataset splits: {list(dataset.keys())}")
+    logging.info(f"Dataset features: {list(features.keys())}")
 
-    # PlantDoc may have 'label' as ClassLabel or as a string field
+    # Find image column
+    image_key = None
+    for key in ["image", "img", "pixel_values"]:
+        if key in features:
+            image_key = key
+            break
+    if image_key is None:
+        logging.error(f"Could not find image column. Available: {list(features.keys())}")
+        sys.exit(1)
+
+    # Find label column
     label_key = None
     label_names = None
-    for key in ["label", "labels", "class"]:
+    for key in ["label", "labels", "class", "category", "disease", "class_name", "label_name"]:
         if key in features:
             label_key = key
             if hasattr(features[key], "names"):
@@ -50,8 +82,12 @@ def main():
             break
 
     if label_key is None:
-        logging.error(f"Could not find label column. Available features: {list(features.keys())}")
+        logging.error(f"Could not find label column. Available: {list(features.keys())}")
         sys.exit(1)
+
+    logging.info(f"Using image column: '{image_key}', label column: '{label_key}'")
+    if label_names:
+        logging.info(f"Number of classes: {len(label_names)}")
 
     total_saved = 0
     for split_name in dataset:
@@ -59,7 +95,7 @@ def main():
         logging.info(f"Processing split '{split_name}' with {len(split)} samples...")
 
         for i, sample in enumerate(split):
-            image = sample["image"]
+            image = sample[image_key]
             label_val = sample[label_key]
 
             # Resolve label name
@@ -78,7 +114,6 @@ def main():
             img_path = class_dir / img_filename
 
             if not img_path.exists():
-                # Convert to RGB if needed (some images may be RGBA)
                 if image.mode != "RGB":
                     image = image.convert("RGB")
                 image.save(img_path, "JPEG", quality=95)

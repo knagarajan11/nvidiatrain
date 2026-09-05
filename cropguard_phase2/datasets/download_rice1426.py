@@ -9,10 +9,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def main():
     """
-    Downloads a rice disease dataset from HuggingFace.
-    Uses 'masoudnickparvar/brain-tumor-mri-dataset' style approach to find a suitable
-    rice leaf disease dataset. We use Kaggle's rice-diseases-image-dataset via kagglehub
-    if available, otherwise fall back to a HuggingFace mirror.
+    Downloads a rice leaf disease dataset from HuggingFace.
+    Uses Project-AgML/rice_leaf_disease_classification (parquet, 3,829 images, 6 classes).
+    Fallback: Project-AgML/rice_disease_classification_bangladesh,
+              LeafNet75/Rice-Disease-Classification-Dataset.
     """
     dest_dir = Path(os.getenv("RICE1426_DIR", "data/raw/rice1426"))
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -25,124 +25,107 @@ def main():
 
     logging.info(f"Downloading Rice disease dataset to {dest_dir}")
 
-    # Try kagglehub first (most reliable for rice disease datasets)
-    downloaded = False
     try:
-        import kagglehub
-        logging.info("Using kagglehub to download rice disease dataset from Kaggle...")
-        logging.info("Source: Kaggle (teddevriern/rice-leaf-diseases)")
-        path = kagglehub.dataset_download("teddevriern/rice-leaf-diseases")
-        logging.info(f"Kaggle download complete to: {path}")
-
-        # Copy images from kaggle cache to our dest_dir
-        import shutil
-        src = Path(path)
-        total_copied = 0
-        for class_dir in src.rglob("*"):
-            if class_dir.is_dir():
-                # Only copy directories that contain images
-                images = list(class_dir.glob("*.jpg")) + list(class_dir.glob("*.jpeg")) + list(class_dir.glob("*.png")) + list(class_dir.glob("*.JPG"))
-                if images:
-                    # Use the directory name as the class name
-                    target_class_dir = dest_dir / class_dir.name.replace(" ", "_")
-                    target_class_dir.mkdir(parents=True, exist_ok=True)
-                    for img in images:
-                        target = target_class_dir / img.name
-                        if not target.exists():
-                            shutil.copy2(img, target)
-                            total_copied += 1
-
-        if total_copied > 0:
-            logging.info(f"Copied {total_copied} rice disease images to {dest_dir}")
-            downloaded = True
-        else:
-            logging.warning("Kaggle download succeeded but no images found in expected structure.")
-
+        from datasets import load_dataset
     except ImportError:
-        logging.info("kagglehub not installed. Trying HuggingFace fallback...")
-    except Exception as e:
-        logging.warning(f"Kaggle download failed: {e}. Trying HuggingFace fallback...")
+        logging.error("'datasets' library not found. Install it: pip install datasets")
+        sys.exit(1)
 
-    # Fallback: Try HuggingFace datasets
-    if not downloaded:
+    hf_token = os.getenv("HF_TOKEN")
+
+    # Try multiple dataset sources in order of reliability
+    dataset_candidates = [
+        "Project-AgML/rice_leaf_disease_classification",
+        "Project-AgML/rice_leaf_disease_classification_india",
+        "Project-AgML/rice_disease_classification_bangladesh",
+        "LeafNet75/Rice-Disease-Classification-Dataset",
+    ]
+
+    dataset = None
+    for repo_id in dataset_candidates:
         try:
-            from datasets import load_dataset
-            hf_token = os.getenv("HF_TOKEN")
+            logging.info(f"Trying HuggingFace dataset: {repo_id}...")
+            dataset = load_dataset(repo_id, trust_remote_code=True, token=hf_token)
+            logging.info(f"Successfully loaded: {repo_id}")
+            break
+        except Exception as e:
+            logging.warning(f"  Failed to load {repo_id}: {e}")
+            continue
 
-            logging.info("Loading rice disease dataset from HuggingFace Hub...")
-            # Try common rice disease datasets on HuggingFace
-            dataset_candidates = [
-                "Prottoy001/Rice_Disease_Dataset",
-                "smaranjitghose/rice-disease-dataset",
-            ]
+    if dataset is None:
+        logging.error("Could not download rice disease dataset from any source.")
+        logging.error("Please manually download a rice disease dataset and place images in:")
+        logging.error(f"  {dest_dir}/<class_name>/<image_files>")
+        sys.exit(1)
 
-            dataset = None
-            for candidate in dataset_candidates:
-                try:
-                    logging.info(f"Trying HuggingFace dataset: {candidate}")
-                    dataset = load_dataset(candidate, token=hf_token)
-                    logging.info(f"Successfully loaded: {candidate}")
-                    break
-                except Exception as e:
-                    logging.warning(f"  Failed to load {candidate}: {e}")
-                    continue
+    # Auto-detect features
+    first_split = list(dataset.keys())[0]
+    features = dataset[first_split].features
+    logging.info(f"Dataset splits: {list(dataset.keys())}")
+    logging.info(f"Dataset features: {list(features.keys())}")
 
-            if dataset is None:
-                logging.error("Could not download rice disease dataset from any source.")
-                logging.error("Please manually download a rice disease dataset and place images in:")
-                logging.error(f"  {dest_dir}/<class_name>/<image_files>")
-                sys.exit(1)
+    # Find image column
+    image_key = None
+    for key in ["image", "img", "pixel_values"]:
+        if key in features:
+            image_key = key
+            break
+    if image_key is None:
+        logging.error(f"Could not find image column. Available: {list(features.keys())}")
+        sys.exit(1)
 
-            # Save images
-            first_split = list(dataset.keys())[0]
-            features = dataset[first_split].features
+    # Find label column
+    label_key = None
+    label_names = None
+    for key in ["label", "labels", "class", "category", "disease", "class_name", "label_name"]:
+        if key in features:
+            label_key = key
+            if hasattr(features[key], "names"):
+                label_names = features[key].names
+            break
 
-            # Find label column
-            label_key = None
-            label_names = None
-            for key in ["label", "labels", "class"]:
-                if key in features:
-                    label_key = key
-                    if hasattr(features[key], "names"):
-                        label_names = features[key].names
-                    break
+    if label_key is None:
+        logging.error(f"Could not find label column. Available: {list(features.keys())}")
+        sys.exit(1)
 
-            total_saved = 0
-            for split_name in dataset:
-                split = dataset[split_name]
-                logging.info(f"Processing split '{split_name}' with {len(split)} samples...")
+    logging.info(f"Using image column: '{image_key}', label column: '{label_key}'")
+    if label_names:
+        logging.info(f"Number of classes: {len(label_names)}")
 
-                for i, sample in enumerate(split):
-                    image = sample["image"]
+    total_saved = 0
+    for split_name in dataset:
+        split = dataset[split_name]
+        logging.info(f"Processing split '{split_name}' with {len(split)} samples...")
 
-                    if label_key and label_names and isinstance(sample[label_key], int):
-                        label_name = label_names[sample[label_key]]
-                    elif label_key:
-                        label_name = str(sample[label_key])
-                    else:
-                        label_name = "unknown"
+        for i, sample in enumerate(split):
+            image = sample[image_key]
+            label_val = sample[label_key]
 
-                    class_dir_name = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
-                    class_dir = dest_dir / class_dir_name
-                    class_dir.mkdir(parents=True, exist_ok=True)
+            # Resolve label name
+            if label_names is not None and isinstance(label_val, int):
+                label_name = label_names[label_val]
+            else:
+                label_name = str(label_val)
 
-                    img_filename = f"{split_name}_{i:06d}.jpg"
-                    img_path = class_dir / img_filename
+            # Create class directory
+            class_dir_name = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
+            class_dir = dest_dir / class_dir_name
+            class_dir.mkdir(parents=True, exist_ok=True)
 
-                    if not img_path.exists():
-                        if image.mode != "RGB":
-                            image = image.convert("RGB")
-                        image.save(img_path, "JPEG", quality=95)
+            # Save image
+            img_filename = f"{split_name}_{i:06d}.jpg"
+            img_path = class_dir / img_filename
 
-                    total_saved += 1
-                    if total_saved % 500 == 0:
-                        logging.info(f"  Saved {total_saved} images so far...")
+            if not img_path.exists():
+                if image.mode != "RGB":
+                    image = image.convert("RGB")
+                image.save(img_path, "JPEG", quality=95)
 
-            logging.info(f"Download complete. Total images saved: {total_saved}")
+            total_saved += 1
+            if total_saved % 500 == 0:
+                logging.info(f"  Saved {total_saved} images so far...")
 
-        except ImportError:
-            logging.error("'datasets' library not found. Install it: pip install datasets")
-            sys.exit(1)
+    logging.info(f"Download complete. Total images saved: {total_saved}")
 
     # Count images per class
     for class_dir in sorted(dest_dir.iterdir()):
