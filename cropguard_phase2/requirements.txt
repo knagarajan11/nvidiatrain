@@ -1,5 +1,13 @@
-# Expected to run inside nvcr.io/nvidia/nemo container. 
-# Only additional dependencies required for Dataset prep and basic metrics.
+# Expected to run inside nvcr.io/nvidia/nemo:25.02 container.
+# Requires torch >= 2.5 and transformers >= 4.48 (both present in nemo:25.02).
+# Only additional dependencies for dataset prep, training, and basic metrics.
+
+# ── HuggingFace PEFT training ─────────────────────────────────────────────────
+peft>=0.10.0
+accelerate>=0.27.0
+bitsandbytes>=0.43.0        # 4-bit QLoRA on single GPU
+
+# ── Dataset preparation ───────────────────────────────────────────────────────
 python-dotenv
 pandas
 scikit-learn
