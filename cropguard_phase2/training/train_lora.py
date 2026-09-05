@@ -121,17 +121,22 @@ def _fix_broken_local_transformers():
 
 def _patch_transformers_compat():
     """
-    Inject compatibility stubs into transformers.processing_utils for symbols
-    added in transformers 4.48+ that are absent in the NeMo container's 4.46.x.
+    Inject compatibility stubs into transformers.processing_utils (and related
+    modules) for symbols added in transformers 4.47-4.48+ that are absent in
+    the NeMo container's 4.46.x.
 
-    The Nemotron VL model's dynamic processing.py does:
+    The Nemotron VL model's dynamic processing.py imports:
       from transformers.processing_utils import (
           ImagesKwargs, MultiModalData, ProcessingKwargs,
           ProcessorMixin, Unpack, VideosKwargs
       )
-    This patch adds stub TypedDicts so that import succeeds without any
-    network access or pip upgrade.
+      from transformers.video_utils import VideoInput
+
+    This patch injects stubs so those imports succeed without any pip upgrade
+    or network access.
     """
+    import sys
+    import types
     import transformers.processing_utils as _pu
     import transformers
 
@@ -143,7 +148,7 @@ def _patch_transformers_compat():
     except ImportError:
         from typing_extensions import TypedDict
 
-    # Unpack: in typing since 3.11, else typing_extensions
+    # ── Unpack: built-in since Python 3.11, else typing_extensions ───────────
     if not hasattr(_pu, "Unpack"):
         try:
             from typing import Unpack as _Unpack
@@ -151,17 +156,29 @@ def _patch_transformers_compat():
             try:
                 from typing_extensions import Unpack as _Unpack
             except ImportError:
-                from typing import Any as _Unpack  # last resort stub
+                from typing import Any as _Unpack  # last resort
         _pu.Unpack = _Unpack
-        logging.info("  patched: Unpack")
+        logging.info("  patched: transformers.processing_utils.Unpack")
 
-    # Stub TypedDicts for the remaining missing symbols
-    _stubs = ["ImagesKwargs", "VideosKwargs", "ProcessingKwargs", "MultiModalData"]
-    for _name in _stubs:
+    # ── Stub TypedDicts for processing_utils symbols ──────────────────────────
+    _proc_stubs = ["ImagesKwargs", "VideosKwargs", "ProcessingKwargs", "MultiModalData"]
+    for _name in _proc_stubs:
         if not hasattr(_pu, _name):
             _cls = type(_name, (dict,), {"__class_getitem__": classmethod(lambda cls, x: cls)})
             setattr(_pu, _name, _cls)
-            logging.info(f"  patched: {_name}")
+            logging.info(f"  patched: transformers.processing_utils.{_name}")
+
+    # ── transformers.video_utils stub (added in 4.47+) ───────────────────────
+    # processing.py line 22:  from transformers.video_utils import VideoInput
+    if "transformers.video_utils" not in sys.modules:
+        _video_mod = types.ModuleType("transformers.video_utils")
+        # VideoInput is a type alias for a list/array of video frames.
+        # A simple Union-style alias is enough to satisfy the import.
+        from typing import List, Union, Any
+        _video_mod.VideoInput = Union[List[Any], Any]   # stub type alias
+        sys.modules["transformers.video_utils"] = _video_mod
+        transformers.video_utils = _video_mod
+        logging.info("  patched: transformers.video_utils (VideoInput)")
 
 
 def load_config(yaml_path):
