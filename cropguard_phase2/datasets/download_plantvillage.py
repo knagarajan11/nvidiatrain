@@ -107,9 +107,16 @@ def main():
             image = sample[image_key]
 
             # Resolve class directory name preserving both crop and disease
-            if "host" in sample and "disease" in sample and sample["host"] and sample["disease"]:
+            if "host" in sample and sample["host"]:
                 host_str = str(sample["host"]).strip().replace(" ", "_")
-                dis_str = str(sample["disease"]).strip().replace(" ", "_")
+                if sample.get("is_healthy"):
+                    dis_str = "healthy"
+                elif sample.get("disease"):
+                    dis_str = str(sample["disease"]).strip().replace(" ", "_")
+                elif sample.get("class_label"):
+                    dis_str = str(sample["class_label"]).strip().replace(" ", "_")
+                else:
+                    dis_str = "unknown"
                 class_dir_name = f"{host_str}___{dis_str}".replace("/", "_").replace("\\", "_")
             elif "class_label" in sample and sample["class_label"]:
                 class_dir_name = str(sample["class_label"]).replace(" ", "_").replace("/", "_").replace("\\", "_")

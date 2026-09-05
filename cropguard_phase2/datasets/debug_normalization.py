@@ -10,42 +10,7 @@ import yaml
 import sys
 from pathlib import Path
 from collections import defaultdict
-
-# ── replicate normalize_label exactly as-is ──────────────────────────────────
-
-def load_mapping(yaml_path):
-    with open(yaml_path, 'r') as f:
-        return yaml.safe_load(f)
-
-def normalize_label(crop, disease, mapping):
-    crop_lower = crop.lower().strip()
-    crop_cap = crop_lower.capitalize()
-    disease_clean = disease.lower().replace("-", "_").replace(" ", "_").strip(" _")
-    if disease_clean == "healthy" or "healthy" in disease_clean:
-        return crop_cap, "healthy"
-    if crop_lower in mapping:
-        crop_mapping = mapping[crop_lower]
-        for canonical_disease, info in crop_mapping.items():
-            canonical_clean = canonical_disease.lower().replace("-", "_").replace(" ", "_").strip(" _")
-            aliases = [canonical_clean]
-            if isinstance(info, dict) and 'aliases' in info:
-                aliases += [a.lower().replace("-", "_").replace(" ", "_").strip(" _") for a in info['aliases']]
-            if disease_clean in aliases:
-                return crop_cap, canonical_disease
-            # Substring check: alias contained in disease_clean (always safe)
-            # or disease_clean contained in alias (only when disease_clean is long
-            # enough to not be a generic word like 'leaf', 'rust', etc.)
-            for a in aliases:
-                if len(a) > 4 and a in disease_clean:
-                    return crop_cap, canonical_disease
-                if len(disease_clean) > 4 and disease_clean in a:
-                    return crop_cap, canonical_disease
-    cleaned = disease_clean.replace("leaf_", "").replace("_leaf", "").strip(" _")
-    if cleaned and cleaned != "unknown":
-        return crop_cap, cleaned
-    return crop_cap, "UNKNOWN"
-
-# ─────────────────────────────────────────────────────────────────────────────
+from datasets.normalize_labels import load_mapping, build_reverse_lookup, normalize_label
 
 def main():
     mapping_path = Path("configs/label_mapping.yaml")
@@ -54,6 +19,7 @@ def main():
         sys.exit(1)
 
     mapping = load_mapping(mapping_path)
+    reverse_lookup = build_reverse_lookup(mapping)
 
     # ── 1. Scan actual raw directories ───────────────────────────────────────
     datasets_to_check = {
@@ -80,7 +46,7 @@ def main():
                 raw_disease = r['disease']
                 orig_label  = r.get('original_label', '')
 
-                norm_crop, norm_disease = normalize_label(raw_crop, raw_disease, mapping)
+                norm_crop, norm_disease = normalize_label(raw_crop, raw_disease, mapping, reverse_lookup=reverse_lookup)
 
                 if norm_disease == "UNKNOWN":
                     unknown_entries.append({
