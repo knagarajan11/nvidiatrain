@@ -13,23 +13,31 @@ def create_task_a(record):
     }
 
 def create_task_b(record):
+    crop = record['crop']
+    disease = record['disease']
+    disease_display = "Healthy" if disease.lower() == "healthy" else disease.replace("_", " ").title()
+    health_status = record.get('health_status') or ("Healthy" if disease.lower() == "healthy" else "Diseased")
     return {
         "image": record['image_path'],
-        "instruction": "Identify the crop and disease.",
-        "response": f"Crop: {record['crop']}\nDisease: {record['disease']}"
+        "instruction": "Identify the crop and disease in this image.",
+        "response": f"Crop: {crop}\nDisease: {disease_display}\nStatus: {health_status}"
     }
 
 def create_task_d(record):
-    # Structured JSON
+    crop = record['crop']
+    disease = record['disease']
+    disease_display = "Healthy" if disease.lower() == "healthy" else disease.replace("_", " ").title()
+    health_status = record.get('health_status') or ("Healthy" if disease.lower() == "healthy" else "Diseased")
     structured_res = {
-        "crop": record['crop'],
-        "disease": record['disease'],
+        "crop": crop,
+        "disease": disease_display,
+        "health_status": health_status,
         "visual_symptoms": []
     }
     return {
         "image": record['image_path'],
         "instruction": "Output the diagnosis as structured JSON.",
-        "response": json.dumps(structured_res)
+        "response": json.dumps(structured_res, indent=2)
     }
 
 def generate_multimodal_dataset(split_name, input_file, out_file):

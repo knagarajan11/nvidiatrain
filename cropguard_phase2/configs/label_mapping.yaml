@@ -284,3 +284,35 @@ soybean:
       - "Soybean_healthy"
       - "healthy"
       - "Soyabean leaf"
+
+rice:
+  bacterial_leaf_blight:
+    aliases:
+      - "Bacterial_Leaf_Blight"
+      - "bacterial leaf blight"
+      - "bacterial blight"
+  brown_spot:
+    aliases:
+      - "Brown_Spot"
+      - "Brown Spot"
+      - "brown spot"
+  leaf_blast:
+    aliases:
+      - "Leaf_Blast"
+      - "leaf blast"
+      - "blast"
+  leaf_scald:
+    aliases:
+      - "Leaf_Scald"
+      - "leaf scald"
+      - "scald"
+  sheath_blight:
+    aliases:
+      - "Sheath_Blight"
+      - "sheath blight"
+  healthy:
+    aliases:
+      - "Healthy_Rice_Leaf"
+      - "healthy"
+      - "healthy rice leaf"
+

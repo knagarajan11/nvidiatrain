@@ -115,7 +115,11 @@ def main():
                 label_name = str(label_val)
 
             # Create class directory
-            class_dir_name = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
+            clean_label = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
+            if not clean_label.lower().startswith("rice"):
+                class_dir_name = f"Rice___{clean_label}"
+            else:
+                class_dir_name = clean_label
             class_dir = dest_dir / class_dir_name
             class_dir.mkdir(parents=True, exist_ok=True)
 
