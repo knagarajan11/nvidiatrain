@@ -34,7 +34,15 @@ def main():
     hf_token = os.getenv("HF_TOKEN")
 
     logging.info("Loading dataset from HuggingFace Hub (this may take several minutes)...")
-    dataset = load_dataset("mohanty/PlantVillage", token=hf_token)
+
+    # Clear any stale HuggingFace cache for this dataset to avoid builder config errors
+    import shutil
+    cache_dir = Path.home() / ".cache" / "huggingface" / "datasets" / "mohanty___plant_village"
+    if cache_dir.exists():
+        logging.info(f"Clearing stale HuggingFace cache at {cache_dir}...")
+        shutil.rmtree(cache_dir, ignore_errors=True)
+
+    dataset = load_dataset("mohanty/PlantVillage", name="default", trust_remote_code=True, token=hf_token)
 
     # Get label names
     label_names = dataset["train"].features["label"].names
