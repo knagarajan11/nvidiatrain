@@ -81,6 +81,13 @@ def build_hydra_overrides(lora_cfg, model_cfg):
         f"++trainer.accelerator=gpu",
         f"++trainer.precision=bf16",
         f"++trainer.max_epochs={lora_cfg.get('epochs', 3)}",
+        # check_val_every_n_epoch=1 enables epoch-based validation.
+        # When it is null (base config default), val_check_interval must be an
+        # integer (step count). With epoch-mode=1, val_check_interval=1.0 is
+        # valid (means 100% of epoch). Without this, PL raises:
+        #   MisconfigurationException: val_check_interval should be an integer
+        #   when check_val_every_n_epoch=None, found 1.0
+        f"++trainer.check_val_every_n_epoch=1",
         f"++trainer.val_check_interval=1.0",
         # --- model ---
         f"++model.micro_batch_size={lora_cfg.get('batch_size', 4)}",
