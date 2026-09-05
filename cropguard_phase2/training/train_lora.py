@@ -227,6 +227,25 @@ def _patch_transformers_compat():
     except Exception as e:
         logging.warning(f"  failed to patch AutoFactory: {e}")
 
+    # ── PreTrainedModel _no_split_modules bypass (for RADIOModel) ──
+    try:
+        from transformers.modeling_utils import PreTrainedModel
+        _orig_get_no_split = PreTrainedModel._get_no_split_modules
+
+        def _patched_get_no_split(self, device_map):
+            try:
+                return _orig_get_no_split(self, device_map)
+            except ValueError as e:
+                if "does not support `device_map='auto'`" in str(e):
+                    logging.info(f"  _get_no_split bypass: ignored for {self.__class__.__name__}")
+                    return []
+                raise
+
+        PreTrainedModel._get_no_split_modules = _patched_get_no_split
+        logging.info("  patched: transformers PreTrainedModel._get_no_split_modules")
+    except Exception as e:
+        logging.warning(f"  failed to patch _get_no_split_modules: {e}")
+
 
 def load_config(yaml_path):
     with open(yaml_path, 'r') as f:
