@@ -18,7 +18,7 @@ def find_neva_conf_dir(nemo_script):
     Return the conf/ directory that ships alongside neva_peft.py, which contains
     neva_peft.py's own Hydra/OmegaConf schema.  We use this as the base config
     so that all required model keys are present — we then override only our
-    specific settings via CLI '+key=value' overrides.
+    specific settings via CLI '++key=value' overrides.
     """
     script_dir = Path(nemo_script).parent
     for candidate in [script_dir / "conf", script_dir.parent / "conf"]:
@@ -27,14 +27,41 @@ def find_neva_conf_dir(nemo_script):
     return None
 
 
+def pick_config_name(conf_dir):
+    """
+    Choose the best Hydra config file from conf_dir.
+    Priority:
+      1. Any file whose stem contains 'peft' (e.g. neva_peft, neva_peft_config)
+      2. Any file whose stem contains 'neva' but NOT 'mixtral' / 'llama' / 'mistral'
+      3. First file alphabetically (last resort)
+    """
+    conf_files = sorted(Path(conf_dir).glob("*.yaml"))
+    if not conf_files:
+        return "neva_peft"
+    # Priority 1 – contains 'peft'
+    for f in conf_files:
+        if "peft" in f.stem.lower():
+            return f.stem
+    # Priority 2 – generic neva, not a specific model variant
+    skip_keywords = {"mixtral", "llama", "mistral", "falcon", "mamba"}
+    for f in conf_files:
+        stem_lower = f.stem.lower()
+        if "neva" in stem_lower and not any(kw in stem_lower for kw in skip_keywords):
+            return f.stem
+    # Fallback
+    return conf_files[0].stem
+
 def build_hydra_overrides(lora_cfg, model_cfg):
     """
-    Build the list of Hydra '+key=value' CLI overrides that inject our
+    Build the list of Hydra '++key=value' CLI overrides that inject our
     CropGuard settings into neva_peft.py's existing OmegaConf struct.
 
-    We use '+' prefix throughout because neva_peft's base config may not
-    pre-declare every leaf key we care about.  The '+' operator appends a
-    new key without triggering 'Key not in struct' errors.
+    We use '++' (double-plus) throughout:
+      '++'  = override if the key already exists in the struct, OR
+              append if it doesn't exist yet.
+    This is safer than '+' (append-only, fails if key exists) or plain
+    'key=value' (override-only, fails if key is not in struct).
+    See: https://hydra.cc/docs/advanced/override_grammar/basic/#force-add
     """
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     model_name = model_cfg.get("model_name", "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL")
@@ -44,29 +71,29 @@ def build_hydra_overrides(lora_cfg, model_cfg):
 
     overrides = [
         # --- trainer ---
-        f"+trainer.num_nodes=1",
-        f"+trainer.devices={num_gpus}",
-        f"+trainer.accelerator=gpu",
-        f"+trainer.precision=bf16",
-        f"+trainer.strategy=ddp",
-        f"+trainer.max_epochs={lora_cfg.get('epochs', 3)}",
-        f"+trainer.val_check_interval=1.0",
+        f"++trainer.num_nodes=1",
+        f"++trainer.devices={num_gpus}",
+        f"++trainer.accelerator=gpu",
+        f"++trainer.precision=bf16",
+        f"++trainer.strategy=ddp",
+        f"++trainer.max_epochs={lora_cfg.get('epochs', 3)}",
+        f"++trainer.val_check_interval=1.0",
         # --- model ---
-        f"+model.micro_batch_size={lora_cfg.get('batch_size', 4)}",
-        f"+model.peft.peft_scheme=lora",
-        f"+model.peft.restore_from_path={model_name}.nemo",
-        f"+model.peft.lora_tuning.r={lora_cfg.get('r', 16)}",
-        f"+model.peft.lora_tuning.alpha={lora_cfg.get('alpha', 32)}",
-        f"+model.peft.lora_tuning.dropout={lora_cfg.get('dropout', 0.05)}",
-        f"+model.peft.lora_tuning.target_modules={target_modules_str}",
+        f"++model.micro_batch_size={lora_cfg.get('batch_size', 4)}",
+        f"++model.peft.peft_scheme=lora",
+        f"++model.peft.restore_from_path={model_name}.nemo",
+        f"++model.peft.lora_tuning.r={lora_cfg.get('r', 16)}",
+        f"++model.peft.lora_tuning.alpha={lora_cfg.get('alpha', 32)}",
+        f"++model.peft.lora_tuning.dropout={lora_cfg.get('dropout', 0.05)}",
+        f"++model.peft.lora_tuning.target_modules={target_modules_str}",
         # --- data ---
-        "+model.data.data_prefix.train=[data/train/instruction_train.jsonl]",
-        "+model.data.data_prefix.validation=[data/validation/instruction_val.jsonl]",
-        "+model.data.data_prefix.test=[data/test/instruction_test.jsonl]",
+        "++model.data.data_prefix.train=[data/train/instruction_train.jsonl]",
+        "++model.data.data_prefix.validation=[data/validation/instruction_val.jsonl]",
+        "++model.data.data_prefix.test=[data/test/instruction_test.jsonl]",
         # --- exp_manager ---
-        "+exp_manager.explicit_log_dir=outputs/checkpoints/cropguard_lora",
-        "+exp_manager.name=cropguard_lora",
-        "+exp_manager.create_checkpoint_callback=true",
+        "++exp_manager.explicit_log_dir=outputs/checkpoints/cropguard_lora",
+        "++exp_manager.name=cropguard_lora",
+        "++exp_manager.create_checkpoint_callback=true",
     ]
     return overrides
 
@@ -157,9 +184,8 @@ def main():
         overrides = build_hydra_overrides(lora_cfg, model_cfg)
 
         if conf_dir:
-            # Discover the default config name in the conf/ dir (first .yaml file)
-            conf_files = list(Path(conf_dir).glob("*.yaml"))
-            config_name = conf_files[0].stem if conf_files else "neva_peft"
+            config_name = pick_config_name(conf_dir)
+            logging.info(f"Using NeMo conf dir: {conf_dir}, config: {config_name}")
             cmd = [
                 "torchrun",
                 f"--nproc-per-node={num_gpus}",
