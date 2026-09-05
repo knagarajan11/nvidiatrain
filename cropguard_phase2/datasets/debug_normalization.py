@@ -10,7 +10,10 @@ import yaml
 import sys
 from pathlib import Path
 from collections import defaultdict
-from datasets.normalize_labels import load_mapping, build_reverse_lookup, normalize_label
+
+# Add current folder to sys.path to import local normalize_labels without conflicting with HuggingFace 'datasets'
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from normalize_labels import load_mapping, build_reverse_lookup, normalize_label
 
 def main():
     mapping_path = Path("configs/label_mapping.yaml")
@@ -25,6 +28,7 @@ def main():
     datasets_to_check = {
         "plantvillage": Path("data/metadata/plantvillage.jsonl"),
         "plantdoc":     Path("data/metadata/plantdoc.jsonl"),
+        "rice1426":     Path("data/metadata/rice1426.jsonl"),
     }
 
     for ds_name, jsonl_path in datasets_to_check.items():
