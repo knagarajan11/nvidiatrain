@@ -44,19 +44,40 @@ Downloads PlantVillage, PlantDoc, and Rice1426.
 # or:
 ./scripts/download_all_datasets.sh
 
-# To force re-download even if datasets already exist:
+# To force re-download and refresh raw directory structure:
 ./scripts/run_pipeline.sh --stage download --force
 # or:
 ./scripts/download_all_datasets.sh --force
 ```
 
-## E. Prepare Datasets
-Normalizes labels, validates schemas, splits data, and generates multimodal JSONL instructions for NeMo.
+## E. Prepare Datasets & Verification
+Normalizes labels, validates schemas, splits data (train/val/test), and generates multimodal JSONL instructions for NeMo.
+
 ```bash
 ./scripts/run_pipeline.sh --stage data
-# or
+# or:
 ./scripts/prepare_all_datasets.sh
 ```
+
+### Verification & Quality Checks:
+After preparation, verify dataset integrity and label normalization:
+
+1. **Verify Label Normalization (Check for 0 UNKNOWNs)**:
+   ```bash
+   python datasets/debug_normalization.py
+   ```
+2. **Validate Image Files & Corrupt Images**:
+   ```bash
+   python datasets/validate_dataset.py
+   ```
+3. **Inspect Dataset Splits**:
+   ```bash
+   wc -l data/splits/*.jsonl
+   ```
+4. **Inspect Generated NeMo Instructions**:
+   ```bash
+   head -n 2 data/instructions/nemo_train.jsonl
+   ```
 
 ## F. Train LoRA
 Runs NeMo PEFT (LoRA) fine-tuning targeting the Nemotron language backbone.
