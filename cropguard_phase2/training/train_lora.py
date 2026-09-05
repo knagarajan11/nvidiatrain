@@ -446,7 +446,7 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
     try:
         from peft import LoraConfig, get_peft_model, TaskType
         from transformers import (
-            AutoProcessor, AutoModelForVision2Seq,
+            AutoProcessor, AutoModelForCausalLM,
             TrainingArguments, Trainer, BitsAndBytesConfig
         )
     except ImportError:
@@ -499,7 +499,7 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
         except Exception:
             logging.info("BitsAndBytes 4-bit not available, using bf16")
 
-    model = AutoModelForVision2Seq.from_pretrained(**load_kwargs)
+    model = AutoModelForCausalLM.from_pretrained(**load_kwargs)
     model.config.use_cache = False  # required for gradient checkpointing
 
     # ── apply LoRA ───────────────────────────────────────────────────────────
