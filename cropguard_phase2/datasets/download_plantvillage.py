@@ -44,8 +44,26 @@ def main():
 
     dataset = load_dataset("mohanty/PlantVillage", name="default", trust_remote_code=True, token=hf_token)
 
-    # Get label names
-    label_names = dataset["train"].features["label"].names
+    # Auto-detect the label column and image column
+    first_split = list(dataset.keys())[0]
+    features = dataset[first_split].features
+    logging.info(f"Dataset features: {list(features.keys())}")
+
+    # Find label column
+    label_key = None
+    label_names = None
+    for key in ["label", "labels", "class", "category", "disease"]:
+        if key in features:
+            label_key = key
+            if hasattr(features[key], "names"):
+                label_names = features[key].names
+            break
+
+    if label_key is None:
+        logging.error(f"Could not find label column. Available features: {list(features.keys())}")
+        sys.exit(1)
+
+    logging.info(f"Using label column: '{label_key}' with {len(label_names) if label_names else '?'} classes")
 
     total_saved = 0
     for split_name in dataset:
@@ -54,8 +72,13 @@ def main():
 
         for i, sample in enumerate(split):
             image = sample["image"]
-            label_idx = sample["label"]
-            label_name = label_names[label_idx]
+            label_val = sample[label_key]
+
+            # Resolve label name
+            if label_names is not None and isinstance(label_val, int):
+                label_name = label_names[label_val]
+            else:
+                label_name = str(label_val)
 
             # Create class directory (sanitize name for filesystem)
             class_dir_name = label_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
