@@ -67,6 +67,58 @@ def get_hf_token() -> Optional[str]:
 
 
 
+
+def _fix_broken_local_transformers():
+    """
+    Detect and remove a user-local transformers 5.x that was partially installed
+    by a previous pip attempt but is incompatible with the container's torch 2.4.
+
+    Transformers 5.x requires torch >= 2.5.  When it finds torch 2.4 it prints:
+      [transformers] Disabling PyTorch because PyTorch >= 2.5 is required
+    and makes AutoModel* classes unavailable.
+
+    Fix: remove ~/.local site-packages from sys.path, purge cached modules,
+    and reimport from the container's system install (4.46.x).
+    No pip or internet access required.
+    """
+    import sys
+    import importlib
+
+    try:
+        import transformers as _tf
+        major = int(_tf.__version__.split(".")[0])
+        if major < 5:
+            return  # system version is fine, nothing to do
+
+        logging.warning(
+            f"Found user-local transformers {_tf.__version__} (requires torch>=2.5, "
+            "container has torch 2.4 — PyTorch will be disabled). "
+            "Removing from sys.path and falling back to container's system install ..."
+        )
+
+        # Strip user-local paths from sys.path
+        import site
+        user_site = site.getusersitepackages()          # e.g. ~/.local/lib/python3.10/site-packages
+        home_local = str(Path.home() / ".local" / "lib")
+        sys.path = [
+            p for p in sys.path
+            if p != user_site and not p.startswith(home_local)
+        ]
+        logging.info(f"Stripped user-local site-packages: {user_site}")
+
+        # Purge all cached transformers (and peft) modules so reimport is clean
+        stale = [k for k in sys.modules if k.startswith(("transformers", "peft"))]
+        for k in stale:
+            del sys.modules[k]
+
+        # Reimport — now resolves from the system/container install
+        import transformers as _tf2
+        logging.info(f"Reloaded transformers from system: {_tf2.__version__}")
+
+    except Exception as exc:
+        logging.warning(f"_fix_broken_local_transformers: {exc}")
+
+
 def _patch_transformers_compat():
     """
     Inject compatibility stubs into transformers.processing_utils for symbols
@@ -339,6 +391,12 @@ def run_native_peft_training(lora_cfg: dict, model_cfg: dict):
     logging.info(f"LoRA       : r={lora_r}, alpha={lora_alpha}, dropout={lora_drop}")
     logging.info(f"Targets    : {target_mods}")
     logging.info(f"Epochs     : {epochs}, batch={batch_size}")
+
+    # ── fix broken user-local transformers 5.x (if present) ─────────────────
+    # A prior pip upgrade attempt may have installed transformers 5.x in
+    # ~/.local, which requires torch>=2.5 (container has 2.4) and disables
+    # AutoModel* entirely.  Strip it from sys.path, fall back to 4.46 system.
+    _fix_broken_local_transformers()
 
     # ── compatibility patch for older transformers in NeMo container ─────────
     # The NeMo container ships with transformers 4.46.x, but
