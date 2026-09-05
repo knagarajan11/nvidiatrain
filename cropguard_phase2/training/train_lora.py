@@ -21,6 +21,7 @@ def generate_nemo_config(lora_cfg, model_cfg, out_path):
             "accelerator": "gpu",
             "max_epochs": lora_cfg.get("epochs", 3),
             "val_check_interval": 1.0,
+            "precision": "bf16",
         },
         "model": {
             "micro_batch_size": lora_cfg.get("batch_size", 4),
